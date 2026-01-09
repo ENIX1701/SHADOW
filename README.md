@@ -15,14 +15,26 @@ SHADOW is the server component of AETHER.
 
 ## How to run
 
-> TODO
+For development environment use:
+
+```bash
+cargo run
+```
+
+This will deploy the server on `127.0.0.1` port `9999`.
+
+## Deploy
+
+Deployment uses a multi-stage Docker build. There are two containers in total. One is used for building the app, it has the full-fledged Rust toolchain (so cargo and rustc in this case). It's heavyweight and it's main task is to build the application. The second container is the runtime itself. It's lightweight and portable, so you can run the server in any environment supporting Docker (so a VPS, Kubernetes cluster, you own PC, or a Raspberry Pi!).
+
+
 
 ## TODO
 
 - [ ] core server with networking
-- [ ] communication protocol -> consider JSON for ease of use for now
+- [ ] communication protocol -> JSON over HTTP (easiest according to my research)
 - [ ] maybe some database for session persistence
-- [ ] GHOSTs monitoring -> possibly live dashboard in CHARON?
+- [ ] GHOSTs monitoring -> ~~possibly~~ live dashboard in CHARON?
 
 ## Legal
 
