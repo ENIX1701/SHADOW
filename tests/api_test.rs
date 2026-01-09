@@ -1,0 +1,309 @@
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
+use dashmap::DashMap;
+use http_body_util::BodyExt;
+use serde_json::{json, Value};
+use SHADOW::{app, Ghost, HeartbeatRequest, HeartbeatResponse, ServerState, TaskResult};
+use std::sync::Arc;
+use tower::ServiceExt;
+
+// setup for future parametrization
+const API_PATH: &str = "/api/v1";
+const GHOST_PATH: &str = "/ghost";
+const CHARON_PATH: &str = "/charon";
+
+enum Module {
+    GHOST,
+    CHARON
+}
+
+fn api(module: Module, endpoint: String) -> String {
+    if matches!(module, Module::GHOST) {
+        format!("{}{}{}", API_PATH, GHOST_PATH, endpoint)
+    } else if matches!(module, Module::CHARON) {
+        format!("{}{}{}", API_PATH, CHARON_PATH, endpoint)
+    } else {
+        format!("{}{}", API_PATH, endpoint)
+    }
+}
+
+// fresh state for each test
+fn get_test_app() -> (axum::Router, Arc<ServerState>) {
+    let state = Arc::new(ServerState {
+        ghosts: DashMap::new(),
+        tasks: DashMap::new()
+    });
+
+    (app(state.clone()), state)
+}
+
+#[tokio::test]
+async fn test_health_check() {
+    let (app, _) = get_test_app();
+
+    let response = app
+        .oneshot(Request::builder()
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(&body[..], b"OK");
+}
+
+#[tokio::test]
+async fn test_ghost_register_and_retrieval() {
+    let (app, state) = get_test_app();
+    let ghost_id = "mock-uuid-54321";
+
+    let payload = json!({
+        "id": ghost_id,
+        "hostname": "uwu-underground",
+        "os": "linux",
+        "last_seen": 0
+    });
+
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(Module::GHOST, "/register".to_string()))
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&payload).unwrap()))
+                .unwrap()
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(state.ghosts.contains_key(ghost_id));
+
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(api(Module::CHARON, format!("/ghosts/{}", ghost_id)))
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let ghost: Option<Ghost> = serde_json::from_slice(&body).unwrap();
+    assert!(ghost.is_some());
+    assert_eq!(ghost.unwrap().id, ghost_id);
+}
+
+#[tokio::test]
+async fn test_charon_get_unknown_ghost() {
+    let (app, _) = get_test_app();
+
+    let response = app
+        .oneshot(Request::builder()
+            .uri(api(Module::CHARON, "/ghosts/unknown-id".to_string()))
+            .body(Body::empty())
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let ghost: Option<Ghost> = serde_json::from_slice(&body).unwrap();
+    assert!(ghost.is_none());
+}
+
+#[tokio::test]
+async fn test_full_task_flow() {
+    let (app, state) = get_test_app();
+    let ghost_id = "active-ghost-1";
+
+    state.ghosts.insert(ghost_id.to_string(), Ghost {
+        id: ghost_id.to_string(),
+        hostname: "test".to_string(),
+        os: "TempleOS".to_string(),
+        last_seen: 0
+    });
+
+    let task_payload = json!({
+        "command": "whoami",
+        "args": "".to_string()
+    });
+
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(Module::CHARON, format!("/ghosts/{}/task", ghost_id)))
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&task_payload).unwrap()))
+                .unwrap()
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let tasks = state.tasks.get(ghost_id).unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].status, "pending");
+
+    let task_id = tasks[0].id.clone();
+    drop(tasks);
+
+    let heartbeat_req = HeartbeatRequest { id: ghost_id.to_string(), results: None };
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(Module::GHOST, "/heartbeat".to_string()))
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&heartbeat_req).unwrap()))
+                .unwrap()
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let hb_res: HeartbeatResponse = serde_json::from_slice(&body).unwrap();
+    assert!(hb_res.tasks.is_some());
+    
+    let received_tasks = hb_res.tasks.unwrap();
+    assert_eq!(received_tasks[0].id, task_id);
+    assert_eq!(received_tasks[0].command, "whoami");
+
+    let tasks = state.tasks.get(ghost_id).unwrap();
+    assert_eq!(tasks[0].status, "sent");
+    drop(tasks);
+
+    let result_payload = json!({
+        "id": ghost_id,
+        "results": [
+            {
+                "task_id": task_id,
+                "status": "done",
+                "output": "root"
+            }
+        ]
+    });
+
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(Module::GHOST, "/heartbeat".to_string()))
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&result_payload).unwrap()))
+                .unwrap()
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let tasks = state.tasks.get(ghost_id).unwrap();
+    assert_eq!(tasks[0].status, "done");
+    assert_eq!(tasks[0].result, Some("root".to_string()));
+}
+
+#[tokio::test]
+async fn test_kill_ghost() {
+    let (app, state) = get_test_app();
+    let ghost_id = "doomed-ghost";
+
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(Module::CHARON, format!("/ghosts/{}/kill", ghost_id)))
+                .body(Body::empty())
+                .unwrap()
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let tasks = state.tasks.get(ghost_id).unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].command, "STOP HAUNT");
+}
+
+#[tokio::test]
+async fn test_heartbeat_unknown_ghost() {
+    let (app, _) = get_test_app();
+
+    let heartbeat_req = HeartbeatRequest { id: "unknown".to_string(), results: None };
+    let response = app
+        .oneshot(Request::builder()
+            .method("POST")
+            .uri(api(Module::GHOST, "/heartbeat".to_string()))
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&heartbeat_req).unwrap()))
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_heartbeat_no_outgoing_tasks() {
+    let (app, state) = get_test_app();
+    let ghost_id = "idle-ghost-51240";
+
+    state.ghosts.insert(ghost_id.to_string(), Ghost {
+        id: ghost_id.to_string(),
+        hostname: "test".to_string(),
+        os: "linux".to_string(),
+        last_seen: 0
+    });
+
+    let heartbeat_req = HeartbeatRequest { id: ghost_id.to_string(), results: None };
+    let response = app
+        .oneshot(Request::builder()
+            .method("POST")
+            .uri(api(Module::GHOST, "/heartbeat".to_string()))
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&heartbeat_req).unwrap()))
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let hb_res: HeartbeatResponse = serde_json::from_slice(&body).unwrap();
+    assert!(hb_res.tasks.is_none());
+}
+
+// TODO: leave for now, will not pass once this is implemented, which is what I want
+#[tokio::test]
+#[should_panic(expected = "placeholder file download")]
+async fn test_ghost_file_download_panic() {
+    let (app, _) = get_test_app();
+
+    let _ = app
+        .oneshot(Request::builder()
+            .method("GET")
+            .uri(api(Module::GHOST, "/files/fake-file".to_string()))
+            .body(Body::empty())
+            .unwrap())
+        .await;
+}
+
+// TODO: same as above
+#[tokio::test]
+#[should_panic(expected = "ghost exfiltration todo")]
+async fn test_ghost_upload_panic() {
+    let (app, _) = get_test_app();
+
+    let _ = app
+        .oneshot(Request::builder()
+            .method("POST")
+            .uri(api(Module::GHOST, "/upload".to_string()))
+            .body(Body::empty())
+            .unwrap())
+        .await;
+}

