@@ -74,6 +74,7 @@ In the future I'd love to implement context path configuration. It'd allow the u
 - [ ] optimize Dockerfile -> use alpine instead of bookworm-slim for runtime
 - [x] [REFACTOR] unify naming -> use GHOST in place of Implant
 - [ ] [REFACTOR] change status from string to enum if possible
+- [ ] improve logging (rn can't see if/what GHOST connected or if CHARON connected. add a proper logging library)
 
 ## Legal
 

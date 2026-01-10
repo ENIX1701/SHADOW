@@ -78,11 +78,13 @@ pub struct ServerState {
 async fn handle_ghost_register(
     State(state): State<Arc<ServerState>>,
     Json(mut ghost): Json<Ghost>
-) {
+) -> Json<String> {
     println!("GHOST registered: {} ({})", ghost.hostname, ghost.id);
 
     ghost.last_seen = chrono::Utc::now().timestamp();
     state.ghosts.insert(ghost.id.clone(), ghost);
+
+    Json("ACK".to_string())
 }
 
 async fn handle_ghost_heartbeat(
