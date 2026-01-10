@@ -3,22 +3,6 @@
 version = 4
 
 [[package]]
-name = "SHADOW"
-version = "0.1.0"
-dependencies = [
- "axum",
- "chrono",
- "dashmap",
- "http-body-util",
- "hyper",
- "serde",
- "serde_json",
- "tokio",
- "tower 0.4.13",
- "uuid",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -684,6 +668,22 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "shadow"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "dashmap",
+ "http-body-util",
+ "hyper",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower 0.4.13",
+ "uuid",
 ]
 
 [[package]]

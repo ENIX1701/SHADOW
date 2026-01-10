@@ -138,7 +138,7 @@ async fn handle_ghost_heartbeat(
     Json(response)
 }
 
-async fn handle_ghost_file_download(Path(id): Path<String>) {
+async fn handle_ghost_file_download(Path(_id): Path<String>) {
     todo!("placeholder file download")
 }
 
