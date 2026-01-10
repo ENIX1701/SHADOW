@@ -4,8 +4,8 @@ use axum::{
 };
 use dashmap::DashMap;
 use http_body_util::BodyExt;
-use serde_json::{json, Value};
-use SHADOW::{app, Ghost, HeartbeatRequest, HeartbeatResponse, ServerState, TaskResult};
+use serde_json::{json};
+use SHADOW::{app, Ghost, HeartbeatRequest, HeartbeatResponse, ServerState, Task};
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -33,7 +33,8 @@ fn api(module: Module, endpoint: String) -> String {
 fn get_test_app() -> (axum::Router, Arc<ServerState>) {
     let state = Arc::new(ServerState {
         ghosts: DashMap::new(),
-        tasks: DashMap::new()
+        pending_tasks: DashMap::new(),
+        task_history: DashMap::new()
     });
 
     (app(state.clone()), state)
@@ -148,7 +149,7 @@ async fn test_full_task_flow() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let tasks = state.tasks.get(ghost_id).unwrap();
+    let tasks = state.pending_tasks.get(ghost_id).unwrap();
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].status, "pending");
 
@@ -177,7 +178,7 @@ async fn test_full_task_flow() {
     assert_eq!(received_tasks[0].id, task_id);
     assert_eq!(received_tasks[0].command, "whoami");
 
-    let tasks = state.tasks.get(ghost_id).unwrap();
+    let tasks = state.pending_tasks.get(ghost_id).unwrap();
     assert_eq!(tasks[0].status, "sent");
     drop(tasks);
 
@@ -205,9 +206,13 @@ async fn test_full_task_flow() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let tasks = state.tasks.get(ghost_id).unwrap();
-    assert_eq!(tasks[0].status, "done");
-    assert_eq!(tasks[0].result, Some("root".to_string()));
+    if let Some(pending) = state.pending_tasks.get(ghost_id) {
+        assert!(pending.is_empty(), "Task was not removed from pending list");
+    }
+
+    let history = state.task_history.get(ghost_id).unwrap();
+    assert_eq!(history[0].status, "done");
+    assert_eq!(history[0].result, Some("root".to_string()));
 }
 
 #[tokio::test]
@@ -227,7 +232,7 @@ async fn test_kill_ghost() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
-    let tasks = state.tasks.get(ghost_id).unwrap();
+    let tasks = state.pending_tasks.get(ghost_id).unwrap();
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].command, "STOP HAUNT");
 }
@@ -276,6 +281,91 @@ async fn test_heartbeat_no_outgoing_tasks() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let hb_res: HeartbeatResponse = serde_json::from_slice(&body).unwrap();
     assert!(hb_res.tasks.is_none());
+}
+
+#[tokio::test]
+async fn test_charon_get_ghost_tasks_combined() {
+    let (app, state) = get_test_app();
+    let ghost_id = "history-ghost-321";
+
+    let pending_task = Task {
+        id: "pending-task-id".to_string(),
+        command: "whoami".to_string(),
+        args: "".to_string(),
+        status: "pending".to_string(),
+        result: None
+    };
+    state.pending_tasks.insert(ghost_id.to_string(), vec![pending_task]);
+
+    let history_task = Task {
+        id: "historical-task-id".to_string(),
+        command: "whoami".to_string(),
+        args: "".to_string(),
+        status: "done".to_string(),
+        result: Some("root".to_string())
+    };
+    state.task_history.insert(ghost_id.to_string(), vec![history_task]);
+
+    let response = app
+        .oneshot(Request::builder()
+            .method("GET")
+            .uri(api(Module::CHARON, format!("/ghosts/{}/tasks", ghost_id)))
+            .body(Body::empty())
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let tasks: Vec<Task> = serde_json::from_slice(&body).unwrap();
+    
+    assert_eq!(tasks.len(), 2);
+    assert!(tasks.iter().any(|t| t.id == "pending-task-id"));
+    assert!(tasks.iter().any(|t| t.id == "historical-task-id"));
+}
+
+#[tokio::test]
+async fn test_charon_get_task_details() {
+    let (app, state) = get_test_app();
+    let ghost_id = "detail-ghost";
+    
+    let history_task = Task {
+        id: "historical-task-id".to_string(),
+        command: "ls".to_string(),
+        args: "-la".to_string(),
+        status: "done".to_string(),
+        result: Some("total 0".to_string())
+    };
+    state.task_history.insert(ghost_id.to_string(), vec![history_task]);
+
+    let response = app.clone()
+        .oneshot(Request::builder()
+            .method("GET")
+            .uri(api(Module::CHARON, format!("/tasks/{}", "historical-task-id".to_string())))
+            .body(Body::empty())
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let task: Option<Task> = serde_json::from_slice(&body).unwrap();
+    assert!(task.is_some());
+    assert_eq!(task.unwrap().result, Some("total 0".to_string()));
+
+    let response = app
+        .oneshot(Request::builder()
+            .method("GET")
+            .uri(api(Module::CHARON, format!("/tasks/{}", "non-existent-id".to_string())))
+            .body(Body::empty())
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let task: Option<Task> = serde_json::from_slice(&body).unwrap();
+    assert!(task.is_none());
 }
 
 // TODO: leave for now, will not pass once this is implemented, which is what I want

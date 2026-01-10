@@ -69,7 +69,7 @@ In the future I'd love to implement context path configuration. It'd allow the u
 - [x] core server with networking
 - [x] communication protocol -> JSON over HTTP (easiest according to my research)
 - [ ] maybe some database for session persistence
-- [ ] GHOSTs monitoring -> ~~possibly~~ live dashboard in CHARON?
+- [x] GHOSTs monitoring -> ~~possibly~~ live dashboard in CHARON?
 - [ ] [EXTRA] API path configuration (for example when building the project, as a Docker build parameter or smth)
 - [ ] optimize Dockerfile -> use alpine instead of bookworm-slim for runtime
 - [x] [REFACTOR] unify naming -> use GHOST in place of Implant

