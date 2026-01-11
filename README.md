@@ -28,11 +28,12 @@ This will deploy the server on `127.0.0.1` port `9999`.
 Deployment uses a multi-stage Docker build. There are two containers in total. One is used for building the app, it has the full-fledged Rust toolchain (so cargo and rustc in this case). It's heavyweight and it's main task is to build the application. The second container is the runtime itself. It's lightweight and portable, so you can run the server in any environment supporting Docker (so a VPS, Kubernetes cluster, you own PC, or a Raspberry Pi!).
 
 ```bash
+# Clone the repository
 git clone https://github.com/ENIX1701/SHADOW.git
-cd SHADOW/
-docker build .
+cd SHADOW/      # Navigate to project folder
+docker build .  # Build the Docker image
 
-# After build is done run the container
+# After build is done run the container with name SHADOW
 docker run -t SHADOW .
 ```
 
@@ -76,7 +77,7 @@ In the future I'd love to implement context path configuration. It'd allow the u
 - [ ] optimize Dockerfile -> use alpine instead of bookworm-slim for runtime
 - [x] [REFACTOR] unify naming -> use GHOST in place of Implant
 - [ ] [REFACTOR] change status from string to enum if possible
-- [ ] improve logging (rn can't see if/what GHOST connected or if CHARON connected. add a proper logging library)
+- [ ] improve (unify) logging
 
 ## Legal
 

