@@ -61,6 +61,7 @@ In the future I'd love to implement context path configuration. It'd allow the u
 |--------|--------------------------------|---------------------------------|-------|
 | GET    | /api/v1/charon/ghosts          | list all active GHOSTs          |       |
 | GET    | /api/v1/charon/ghosts/:id      | get detailed info about a GHOST |       |
+| POST   | /api/v1/charon/ghosts/:id      | update GHOST config             |       |
 | POST   | /api/v1/charon/ghosts/:id/task | queue a new task for GHOST      |       |
 | GET    | /api/v1/charon/ghosts/:id/tasks| get all tasks for GHOST         |       |
 | GET    | /api/v1/charon/tasks/{id}      | get task details                |       |
@@ -76,7 +77,7 @@ In the future I'd love to implement context path configuration. It'd allow the u
 - [ ] [EXTRA] API path configuration (for example when building the project, as a Docker build parameter or smth)
 - [ ] optimize Dockerfile -> use alpine instead of bookworm-slim for runtime
 - [x] [REFACTOR] unify naming -> use GHOST in place of Implant
-- [ ] [REFACTOR] change status from string to enum if possible
+- [x] [REFACTOR] change status from string to enum if possible
 - [ ] improve (unify) logging
 
 ## Legal

