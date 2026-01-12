@@ -79,6 +79,7 @@ In the future I'd love to implement context path configuration. It'd allow the u
 - [x] [REFACTOR] unify naming -> use GHOST in place of Implant
 - [x] [REFACTOR] change status from string to enum if possible
 - [ ] improve (unify) logging
+- [ ] if GHOST sends back hostname that's already present, send back last uuid maybe?
 
 ## Legal
 
