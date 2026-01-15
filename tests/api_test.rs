@@ -4,8 +4,8 @@ use axum::{
 };
 use dashmap::DashMap;
 use http_body_util::BodyExt;
-use serde_json::{json};
-use SHADOW::{app, Ghost, HeartbeatRequest, HeartbeatResponse, ServerState, Task};
+use serde_json::json;
+use shadow::{app, Ghost, GhostConfig, HeartbeatRequest, HeartbeatResponse, ServerState, Task, TaskStatus};
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -58,7 +58,7 @@ async fn test_health_check() {
 }
 
 #[tokio::test]
-async fn test_ghost_register_and_retrieval() {
+async fn test_ghost_register_and_list() {
     let (app, state) = get_test_app();
     let ghost_id = "mock-uuid-54321";
 
@@ -99,6 +99,23 @@ async fn test_ghost_register_and_retrieval() {
     let ghost: Option<Ghost> = serde_json::from_slice(&body).unwrap();
     assert!(ghost.is_some());
     assert_eq!(ghost.unwrap().id, ghost_id);
+
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+            .method("GET")
+            .uri(api(Module::CHARON, "/ghosts".to_string()))
+            .body(Body::empty())
+            .unwrap()
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let list: Vec<Ghost> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, ghost_id);
 }
 
 #[tokio::test]
@@ -120,6 +137,89 @@ async fn test_charon_get_unknown_ghost() {
 }
 
 #[tokio::test]
+async fn test_update_ghost_config_flow() {
+    let (app, state) = get_test_app();
+    let ghost_id = "config-ghost";
+
+    state.ghosts.insert(ghost_id.to_string(), Ghost {
+        id: ghost_id.to_string(),
+        hostname: "test".to_string(),
+        os: "linux".to_string(),
+        sleep_interval: Some(5),
+        jitter_percent: Some(1),
+        update_pending: Some(false),
+        last_seen: None
+    });
+
+    let config_payload = GhostConfig { 
+        sleep_interval: 60,
+        jitter_percent: 10
+    };
+
+    let response = app.clone()
+        .oneshot(Request::builder()
+            .method("POST")
+            .uri(api(Module::CHARON, format!("/ghosts/{}", ghost_id)))
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&config_payload).unwrap()))
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let ghost = state.ghosts.get(ghost_id).unwrap();
+    assert_eq!(ghost.update_pending, Some(true));
+    assert_eq!(ghost.sleep_interval, Some(60));
+    assert_eq!(ghost.jitter_percent, Some(10));
+    drop(ghost);
+
+    let heartbeat_req = HeartbeatRequest { id: ghost_id.to_string(), results: None };
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(api(Module::GHOST, "/heartbeat".to_string()))
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&heartbeat_req).unwrap()))
+                .unwrap()
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let hb_res: HeartbeatResponse = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(hb_res.sleep_interval, 60);
+    assert_eq!(hb_res.jitter_percent, 10);
+
+    let ghost = state.ghosts.get(ghost_id).unwrap();
+    assert_eq!(ghost.update_pending, Some(false));
+}
+
+#[tokio::test]
+async fn test_update_unknown_ghost_config() {
+    let (app, _) = get_test_app();
+    let ghost_id = "unknown-ghost";
+
+    let config_payload = GhostConfig { 
+        sleep_interval: 60,
+        jitter_percent: 10
+    };
+
+    let response = app.clone()
+        .oneshot(Request::builder()
+            .method("POST")
+            .uri(api(Module::CHARON, format!("/ghosts/{}", ghost_id)))
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&config_payload).unwrap()))
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
 async fn test_full_task_flow() {
     let (app, state) = get_test_app();
     let ghost_id = "active-ghost-1";
@@ -128,7 +228,10 @@ async fn test_full_task_flow() {
         id: ghost_id.to_string(),
         hostname: "test".to_string(),
         os: "TempleOS".to_string(),
-        last_seen: 0
+        sleep_interval: None,
+        jitter_percent: None,
+        update_pending: None,
+        last_seen: None
     });
 
     let task_payload = json!({
@@ -151,7 +254,7 @@ async fn test_full_task_flow() {
 
     let tasks = state.pending_tasks.get(ghost_id).unwrap();
     assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].status, "pending");
+    assert_eq!(tasks[0].status, TaskStatus::Pending);
 
     let task_id = tasks[0].id.clone();
     drop(tasks);
@@ -179,7 +282,7 @@ async fn test_full_task_flow() {
     assert_eq!(received_tasks[0].command, "whoami");
 
     let tasks = state.pending_tasks.get(ghost_id).unwrap();
-    assert_eq!(tasks[0].status, "sent");
+    assert_eq!(tasks[0].status, TaskStatus::Sent);
     drop(tasks);
 
     let result_payload = json!({
@@ -211,7 +314,7 @@ async fn test_full_task_flow() {
     }
 
     let history = state.task_history.get(ghost_id).unwrap();
-    assert_eq!(history[0].status, "done");
+    assert_eq!(history[0].status, TaskStatus::Done);
     assert_eq!(history[0].result, Some("root".to_string()));
 }
 
@@ -234,7 +337,7 @@ async fn test_kill_ghost() {
 
     let tasks = state.pending_tasks.get(ghost_id).unwrap();
     assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].command, "STOP HAUNT");
+    assert_eq!(tasks[0].command, "STOP_HAUNT");
 }
 
 #[tokio::test]
@@ -263,7 +366,10 @@ async fn test_heartbeat_no_outgoing_tasks() {
         id: ghost_id.to_string(),
         hostname: "test".to_string(),
         os: "linux".to_string(),
-        last_seen: 0
+        sleep_interval: None,
+        jitter_percent: None,
+        update_pending: None,
+        last_seen: None
     });
 
     let heartbeat_req = HeartbeatRequest { id: ghost_id.to_string(), results: None };
@@ -292,7 +398,7 @@ async fn test_charon_get_ghost_tasks_combined() {
         id: "pending-task-id".to_string(),
         command: "whoami".to_string(),
         args: "".to_string(),
-        status: "pending".to_string(),
+        status: TaskStatus::Pending,
         result: None
     };
     state.pending_tasks.insert(ghost_id.to_string(), vec![pending_task]);
@@ -301,7 +407,7 @@ async fn test_charon_get_ghost_tasks_combined() {
         id: "historical-task-id".to_string(),
         command: "whoami".to_string(),
         args: "".to_string(),
-        status: "done".to_string(),
+        status: TaskStatus::Done,
         result: Some("root".to_string())
     };
     state.task_history.insert(ghost_id.to_string(), vec![history_task]);
@@ -333,7 +439,7 @@ async fn test_charon_get_task_details() {
         id: "historical-task-id".to_string(),
         command: "ls".to_string(),
         args: "-la".to_string(),
-        status: "done".to_string(),
+        status: TaskStatus::Done,
         result: Some("total 0".to_string())
     };
     state.task_history.insert(ghost_id.to_string(), vec![history_task]);
@@ -353,7 +459,7 @@ async fn test_charon_get_task_details() {
     assert!(task.is_some());
     assert_eq!(task.unwrap().result, Some("total 0".to_string()));
 
-    let response = app
+    let response = app.clone()
         .oneshot(Request::builder()
             .method("GET")
             .uri(api(Module::CHARON, format!("/tasks/{}", "non-existent-id".to_string())))
@@ -366,6 +472,11 @@ async fn test_charon_get_task_details() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let task: Option<Task> = serde_json::from_slice(&body).unwrap();
     assert!(task.is_none());
+}
+
+#[tokio::test]
+async fn test_charon_get_pending_task_details() {
+
 }
 
 // TODO: leave for now, will not pass once this is implemented, which is what I want

@@ -7,6 +7,7 @@ RUN apk add --no-cache musl-dev pkgconfig openssl-dev
 
 COPY . .
 
+RUN cargo test --release
 RUN cargo build --release
 
 # === RUNTIME ===
