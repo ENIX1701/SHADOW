@@ -1,28 +1,27 @@
 # === BUILD STAGE ===
-FROM rust:1.84-slim-bookworm as builder
+FROM rust:alpine AS builder
 
 WORKDIR /usr/src/app
 
-COPY Cargo.toml Cargo.lock ./
-
-# i've seen this when doing research, apparently it's a trick for caching? i'll revise later, when the app is fully done
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-
-RUN cargo build --release
-
-RUN rm -f target/release/deps/myapp*
-RUN rm -rf src
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev
 
 COPY . .
 
+RUN cargo build --release
+
 # === RUNTIME ===
-FROM debian:bookworm-slim
+FROM alpine:edge
 
-RUN apt-get update && apt-get install -y libssl3 ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache libgcc ca-certificates
+RUN addgroup -S shadowgroup && adduser -S shadowuser -G shadowgroup
 
-COPY --from=builder /usr/src/app/target/release/shadow /usr/local/bin/app
+WORKDIR /home/shadowuser
 
-# TODO: parametrize, maybe with docker compose
-EXPOSE 9999
+COPY --from=builder /usr/src/app/target/release/shadow /usr/local/bin/shadow
 
-CMD ["app"]
+USER shadowuser
+
+ENV SHADOW_PORT=9999
+EXPOSE $SHADOW_PORT
+
+CMD ["shadow"]

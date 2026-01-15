@@ -2,6 +2,7 @@ use dashmap::DashMap;
 use std::sync::Arc;
 use std::net::SocketAddr;
 use shadow::{app, ServerState};
+use std::env;
 
 #[tokio::main]
 async fn main() {
@@ -15,7 +16,10 @@ async fn main() {
     let app_router = app(state);
 
     // start listening
-    let addr = SocketAddr::from(([0, 0, 0, 0], 9999));  // TODO: adress and port configuration via CHARON (NOTE: is this still necessary in Docker? or maybe a separate mechanism would suffice?)
+    let port = env::var("SHADOW_PORT").unwrap_or_else(|_| "9999".to_string());
+    let addr_str = format!("0.0.0.0:{}", port);
+    let addr: SocketAddr = addr_str.parse().expect("Invalid address format");
+    
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     
     println!("SHADOW listening on {}", addr);

@@ -31,10 +31,10 @@ Deployment uses a multi-stage Docker build. There are two containers in total. O
 # Clone the repository
 git clone https://github.com/ENIX1701/SHADOW.git
 cd SHADOW/      # Navigate to project folder
-docker build .  # Build the Docker image
+docker build -t shadow .  # Build the Docker image
 
 # After build is done run the container with name SHADOW
-docker run -t SHADOW .
+docker run -d -p 9999:9999 --name shadow-server shadow
 ```
 
 ## Interfaces
