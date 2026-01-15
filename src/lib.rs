@@ -69,7 +69,7 @@ pub struct TaskResult {
 #[derive(Serialize, Deserialize)]
 pub struct HeartbeatResponse {
     pub sleep_interval: i64,
-    pub jitter: i8,
+    pub jitter_percent: i8,
     pub tasks: Option<Vec<TaskDefinition>>
 }
 
@@ -161,7 +161,7 @@ async fn handle_ghost_heartbeat(
 
     let response = HeartbeatResponse {
         sleep_interval: current_sleep,
-        jitter: current_jitter,
+        jitter_percent: current_jitter,
         tasks: if outgoing_tasks.is_empty() { None } else { Some(outgoing_tasks) }
     };
 
