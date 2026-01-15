@@ -21,7 +21,7 @@ For development environment use:
 cargo run
 ```
 
-This will deploy the server on `127.0.0.1` port `9999`.
+This will deploy the server on `127.0.0.1` port `9999` by default.
 
 ## Deploy
 

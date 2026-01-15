@@ -33,7 +33,7 @@ pub struct Ghost {
     pub hostname: String,   // system hostname of machine on which the implant resides
     pub os: String,         // operating system, for now we'll just send correct implant, TODO to automatically detect OS and send correct implant
     pub sleep_interval: Option<i64>,
-    pub jitter_percent: Option<i8>,
+    pub jitter_percent: Option<i16>,
     pub update_pending: Option<bool>,
     pub last_seen: Option<i64>      // unix timestamp
 }
@@ -41,7 +41,7 @@ pub struct Ghost {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GhostConfig {
     pub sleep_interval: i64,
-    pub jitter_percent: i8
+    pub jitter_percent: i16
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,7 +69,7 @@ pub struct TaskResult {
 #[derive(Serialize, Deserialize)]
 pub struct HeartbeatResponse {
     pub sleep_interval: i64,
-    pub jitter_percent: i8,
+    pub jitter_percent: i16,
     pub tasks: Option<Vec<TaskDefinition>>
 }
 

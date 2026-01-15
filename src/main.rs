@@ -16,8 +16,9 @@ async fn main() {
     let app_router = app(state);
 
     // start listening
+    let url = env::var("SHADOW_URL").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = env::var("SHADOW_PORT").unwrap_or_else(|_| "9999".to_string());
-    let addr_str = format!("0.0.0.0:{}", port);
+    let addr_str = format!("{}:{}", url, port);
     let addr: SocketAddr = addr_str.parse().expect("Invalid address format");
     
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
