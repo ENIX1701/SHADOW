@@ -32,16 +32,16 @@ SHADOW is built with native Docker support in mind. A lightweight, multi-stage `
 # build the image
 docker build -t shadow .
 
-# run the container in interactive tty mode
+# run the container
 docker run -d -p 9999:9999 shadow
 ```
 
 ## Environment variables
 
-| Name              | Type   | Default          | Description                           |
-|-------------------|--------|------------------|---------------------------------------|
-|`SHADOW_URL`       |`String`|`0.0.0.0`       | IP that SHADOW binds to     |
-|`SHADOW_PORT`      |`String`|`9999`            | Port the SHADOW API is listening on   |
+| Name              | Type      | Default   | Description                           |
+|-------------------|-----------|-----------|---------------------------------------|
+|`SHADOW_URL`       | `String`  | `0.0.0.0` | IP that SHADOW binds to               |
+|`SHADOW_PORT`      | `String`  | `9999`    | Port the SHADOW API is listening on   |
 
 ## API guide
 
@@ -54,7 +54,8 @@ For details regarding the API please see the [API reference](docs/API_GUIDE.md).
 
 ## Legal
 
-> **Disclaimer:** This software is for educational purposes and authorized red team engagements only. The authors are not responsible for misuse.
+> [!IMPORTANT]
+> This software is for educational purposes and authorized red team engagements only. The authors are not responsible for misuse.
 
 ---
 

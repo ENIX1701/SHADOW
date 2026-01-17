@@ -9,7 +9,7 @@
 | `POST` | `/api/v1/ghost/register`     | Register a new GHOST                                | [`Ghost`](#struct-ghost)                          | [`String`]()                                      |
 | `POST` | `/api/v1/ghost/heartbeat`    | Main loop that sends status and receives configs    | [`HeartbeatRequest`](#struct-heartbeat-request)   | [`HeartbeatResponse`](#struct-heartbeat-response) |
 | `GET`  | `/api/v1/ghost/files/:id`    | Payload download                                    | `None`                                            | `TODO`                                            |
-| `POST` | `/api/v1/ghost/upload`       | Exfiltrated data target                             | `TODO`                                            | `TODO`                                            |               
+| `POST` | `/api/v1/ghost/upload`       | Exfiltrated data target                             | `TODO`                                            | `TODO`                                            |
 
 ### CHARON
 
