@@ -481,21 +481,6 @@ async fn test_charon_get_pending_task_details() {
 
 // TODO: leave for now, will not pass once this is implemented, which is what I want
 #[tokio::test]
-#[should_panic(expected = "placeholder file download")]
-async fn test_ghost_file_download_panic() {
-    let (app, _) = get_test_app();
-
-    let _ = app
-        .oneshot(Request::builder()
-            .method("GET")
-            .uri(api(Module::GHOST, "/files/fake-file".to_string()))
-            .body(Body::empty())
-            .unwrap())
-        .await;
-}
-
-// TODO: same as above
-#[tokio::test]
 #[should_panic(expected = "ghost exfiltration todo")]
 async fn test_ghost_upload_panic() {
     let (app, _) = get_test_app();
@@ -508,3 +493,5 @@ async fn test_ghost_upload_panic() {
             .unwrap())
         .await;
 }
+
+// TODO: add builder test
