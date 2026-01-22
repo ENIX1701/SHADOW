@@ -6,22 +6,23 @@
 
 | Method | Endpoint                     | Purpose                                             | Request                                           | Response                                          |
 |--------|------------------------------|-----------------------------------------------------|---------------------------------------------------|---------------------------------------------------|
-| `POST` | `/api/v1/ghost/register`     | Register a new GHOST                                | [`Ghost`](#struct-ghost)                          | [`String`]()                                      |
+| `POST` | `/api/v1/ghost/register`     | Register a new GHOST                                | [`Ghost`](#struct-ghost)                          | `String`                                          |
 | `POST` | `/api/v1/ghost/heartbeat`    | Main loop that sends status and receives configs    | [`HeartbeatRequest`](#struct-heartbeat-request)   | [`HeartbeatResponse`](#struct-heartbeat-response) |
-| `GET`  | `/api/v1/ghost/files/:id`    | Payload download                                    | `None`                                            | `TODO`                                            |
-| `POST` | `/api/v1/ghost/upload`       | Exfiltrated data target                             | `TODO`                                            | `TODO`                                            |
+| `GET`  | `/api/v1/ghost/download/:id` | Payload download                                    | `None`                                            | `Binary file`                                     |
+| `POST` | `/api/v1/ghost/upload`       | Exfiltrated data target                             | `Raw bytes`                                       | `String`                                          |
 
 ### CHARON
 
-| Method    | Endpoint                          | Purpose                             | Request                                 | Response                          |
-|-----------|-----------------------------------|-------------------------------------|-----------------------------------------|-----------------------------------|
-| `GET`     | `/api/v1/charon/ghosts`           | List all active GHOSTs              | `None`                                  | [`Vec<Ghost>`](#struct-ghost)     |
-| `GET`     | `/api/v1/charon/ghosts/:id`       | Get detailed info about a GHOST     | `None`                                  | [`Option<Ghost>`](#struct-ghost)  |
-| `POST`    | `/api/v1/charon/ghosts/:id`       | Update GHOST config                 | [`GhostConfig`](#struct-ghost-config)   | [`String`]()                      |
-| `GET`     | `/api/v1/charon/ghosts/:id/tasks` | Get all tasks for GHOST with :id    | `None`                                  | [`Vec<Task>`](#struct-task)       |
-| `GET`     | `/api/v1/charon/tasks/:id`        | Get task details                    | `None`                                  | [`Option<Task>`](#struct-task)    |
-| `POST`    | `/api/v1/charon/ghosts/:id/task`  | Queue a new task for GHOST          | [`TaskRequest`](#struct-task-request)   | `None`                            |
-| `POST`    | `/api/v1/charon/ghosts/:id/kill`  | Trigger the killswitch of a GHOST   | `None`                                  | `None`                            |
+| Method    | Endpoint                          | Purpose                             | Request                                             | Response                          |
+|-----------|-----------------------------------|-------------------------------------|-----------------------------------------------------|-----------------------------------|
+| `GET`     | `/api/v1/charon/ghosts`           | List all active GHOSTs              | `None`                                              | [`Vec<Ghost>`](#struct-ghost)     |
+| `GET`     | `/api/v1/charon/ghosts/:id`       | Get detailed info about a GHOST     | `None`                                              | [`Option<Ghost>`](#struct-ghost)  |
+| `POST`    | `/api/v1/charon/ghosts/:id`       | Update GHOST config                 | [`GhostConfig`](#struct-ghost-config)               | [`String`]()                      |
+| `GET`     | `/api/v1/charon/ghosts/:id/tasks` | Get all tasks for GHOST with :id    | `None`                                              | [`Vec<Task>`](#struct-task)       |
+| `GET`     | `/api/v1/charon/tasks/:id`        | Get task details                    | `None`                                              | [`Option<Task>`](#struct-task)    |
+| `POST`    | `/api/v1/charon/ghosts/:id/task`  | Queue a new task for GHOST          | [`TaskRequest`](#struct-task-request)               | `None`                            |
+| `POST`    | `/api/v1/charon/ghosts/:id/kill`  | Trigger the killswitch of a GHOST   | `None`                                              | `None`                            |
+| `POST`    | `/api/v1/charon/build`            | Trigger a remote GHOST build        | [`GhostBuildRequest`](#struct-ghost-build-request)  | `String` (download path)          |
 
 ## Structs
 
@@ -107,5 +108,30 @@ struct TaskDefinition {
 struct TaskRequest {
     pub command: String,
     pub args: String
+}
+```
+
+<a id="struct-ghost-build-request"></a>
+```Rust
+pub struct GhostBuildRequest {
+        pub target_url: String,
+        pub target_port: String,
+        pub enable_debug: bool,
+
+        // persistence
+        pub enable_persistence: bool,
+        pub persist_runcontrol: bool,
+        pub persist_service: bool,
+        pub persist_cron: bool,
+
+        // impact
+        pub enable_impact: bool,
+        pub impact_encrypt: bool,
+        pub impact_wipe: bool,
+
+        // exfiltration
+        pub enable_exfil: bool,
+        pub exfil_http: bool,
+        pub exfil_dns: bool
 }
 ```
