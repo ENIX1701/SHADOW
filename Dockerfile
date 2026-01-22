@@ -20,6 +20,8 @@ WORKDIR /home/shadowuser
  
 RUN mkdir -p /home/shadowuser/builds && chown -R shadowuser:shadowgroup /home/shadowuser/builds
 
+RUN git clone https://github.com/ENIX1701/GHOST /usr/src/GHOST
+
 COPY --from=builder /usr/src/app/target/release/shadow /usr/local/bin/shadow
 
 USER shadowuser

@@ -494,4 +494,34 @@ async fn test_ghost_upload_panic() {
         .await;
 }
 
-// TODO: add builder test
+#[tokio::test]
+async fn test_charon_build() {
+    let (app, _) = get_test_app();
+
+    let build_req = json!({
+        "target_url": "127.0.0.1",
+        "target_port": "9999",
+        "enable_debug": true,
+        "enable_persistence": false,
+        "persist_runcontrol": false,
+        "persist_service": false,
+        "persist_cron": false,
+        "enable_impact": false,
+        "impact_encrypt": false,
+        "impact_wipe": false,
+        "enable_exfil": true,
+        "exfil_http": true,
+        "exfil_dns": false,
+    });
+
+    let response = app
+        .oneshot(Request::builder()
+            .method("POST")
+            .uri(api(Module::CHARON, format!("/build")))
+            .header("Content-Type", "application/json")
+            .body(Body::from(serde_json::to_string(&build_req).unwrap()))
+            .unwrap())
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+}

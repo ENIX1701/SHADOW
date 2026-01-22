@@ -301,7 +301,9 @@ async fn handle_charon_build(
     
     let build_id = Uuid::now_v7().to_string();
     let source_path = std::env::var("GHOST_SOURCE_PATH").unwrap_or("/usr/src/GHOST".to_string());
-    let build_dir = format!("home/shadowuser/builds/{}", build_id); // TODO: make this not exclusive to docker
+
+    let build_base = std::env::var("SHADOW_BUILD_DIR").unwrap_or("builds".to_string());
+    let build_dir = std::path::Path::new(&build_base).join(&build_id);
 
     tokio::fs::create_dir_all(&build_dir).await.map_err(|e| format!("fs error: {}", e))?;
 
@@ -331,7 +333,7 @@ async fn handle_charon_build(
         args.push(format!("-DEXFIL_DNS={}", if req.exfil_dns { "ON" } else { "OFF" }));
     }
 
-    println!("runnin cmake in {}", build_dir);
+    println!("runnin cmake in {:?}", build_dir);
     let cmake_output = Command::new("cmake")
         .current_dir(&build_dir)
         .args(&args)
@@ -347,7 +349,7 @@ async fn handle_charon_build(
         return Err(format!("cmake failed {}", err_msg));
     }
 
-    println!("running make in {}", build_dir);
+    println!("running make in {:?}", build_dir);
     let make_output = Command::new("make")
         .current_dir(&build_dir)
         .arg("-j4")     // multithread, why not
@@ -371,7 +373,8 @@ async fn handle_charon_build(
 }
 
 pub fn app(state: Arc<ServerState>) -> Router {
-    let serve_dir = ServeDir::new("/home/shadowuser/builds");
+    let build_base = std::env::var("SHADOW_BUILD_DIR").unwrap_or("builds".to_string());
+    let serve_dir = ServeDir::new(build_base);
 
     let ghost_routes = Router::<Arc<ServerState>>::new()
         .route("/register", post(handle_ghost_register))        // ghost init (register)
