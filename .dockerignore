@@ -1,4 +1,7 @@
 target/
+loot/
+builds/
+
 Dockerfile
 .git
 .env

