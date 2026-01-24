@@ -24,7 +24,7 @@ ENV CCACHE_DIR=/home/shadowuser/.ccache
 ENV PATH="/usr/lib/ccache/bin:$PATH"
 
 WORKDIR /home/shadowuser
- 
+
 RUN mkdir -p /home/shadowuser/builds && chown -R shadowuser:shadowgroup /home/shadowuser/builds
 
 RUN git clone https://github.com/ENIX1701/GHOST /usr/src/GHOST

