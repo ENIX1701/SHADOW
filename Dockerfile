@@ -1,5 +1,5 @@
-# === BUILD STAGE ===
-FROM rust:alpine AS builder
+# === BASE STAGE ===
+FROM rust:alpine AS base
 
 WORKDIR /usr/src/app
 
@@ -9,11 +9,17 @@ RUN git clone https://github.com/ENIX1701/GHOST /usr/src/GHOST
 
 COPY . .
 
+# === TEST STAGE ===
+FROM base AS test
 RUN cargo test --release
+
+# === BUILD STAGE ===
+FROM base AS builder
+
 RUN cargo build --release
 
 # === RUNTIME ===
-FROM alpine:edge
+FROM alpine:edge AS runtime
 
 RUN apk add --no-cache libgcc ca-certificates g++ cmake make git linux-headers ccache curl-dev
 RUN addgroup -S shadowgroup && adduser -S shadowuser -G shadowgroup
