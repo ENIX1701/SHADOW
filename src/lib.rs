@@ -31,6 +31,7 @@ pub struct Ghost {
     pub id: String,         // UUID v7
     pub hostname: String,   // system hostname of machine on which the implant resides
     pub os: String,         // operating system
+    pub sysinfo: Option<String>,
     pub sleep_interval: Option<i64>,
     pub jitter_percent: Option<i16>,
     pub update_pending: Option<bool>,
