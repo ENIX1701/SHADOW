@@ -104,6 +104,8 @@ pub struct GhostBuildRequest {
 
         // impact
         pub enable_impact: bool,
+        #[serde(default = "default_impact_level")]
+        pub impact_level: String,
         pub impact_encrypt: bool,
         #[serde(default = "default_algo")]
         pub encryption_algo: String,
@@ -117,6 +119,7 @@ pub struct GhostBuildRequest {
 
 fn default_algo() -> String { "XOR".to_string() }
 fn default_scenario() -> String { "NONE".to_string() }
+fn default_impact_level() -> String { "TEST".to_string() }
 
 // === SHARED STATE ===
 pub struct ServerState {
@@ -357,6 +360,7 @@ async fn handle_charon_build(
         format!("-DSHADOW_PORT={}", req.target_port),
         format!("-DENABLE_DEBUG={}", if req.enable_debug { "ON" } else { "OFF" }),
         format!("-DSCENARIO_MODE={}", req.scenario_mode),
+        format!("-DIMPACT_LEVEL={}", req.impact_level),
         format!("-DENABLE_PERSISTENCE={}", if req.enable_persistence { "ON" } else { "OFF" }),
         format!("-DENABLE_IMPACT={}", if req.enable_impact { "ON" } else { "OFF" }),
         format!("-DENABLE_EXFIL={}", if req.enable_exfil { "ON" } else { "OFF" }),
