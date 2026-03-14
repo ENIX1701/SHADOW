@@ -93,6 +93,9 @@ pub struct GhostBuildRequest {
         pub target_port: String,
         pub enable_debug: bool,
 
+        #[serde(default = "default_scenario")]
+        pub scenario_mode: String,
+
         // persistence
         pub enable_persistence: bool,
         pub persist_runcontrol: bool,
@@ -113,6 +116,7 @@ pub struct GhostBuildRequest {
 }
 
 fn default_algo() -> String { "XOR".to_string() }
+fn default_scenario() -> String { "NONE".to_string() }
 
 // === SHARED STATE ===
 pub struct ServerState {
@@ -352,6 +356,7 @@ async fn handle_charon_build(
         format!("-DSHADOW_URL={}", req.target_url),
         format!("-DSHADOW_PORT={}", req.target_port),
         format!("-DENABLE_DEBUG={}", if req.enable_debug { "ON" } else { "OFF" }),
+        format!("-DSCENARIO_MODE={}", req.scenario_mode),
         format!("-DENABLE_PERSISTENCE={}", if req.enable_persistence { "ON" } else { "OFF" }),
         format!("-DENABLE_IMPACT={}", if req.enable_impact { "ON" } else { "OFF" }),
         format!("-DENABLE_EXFIL={}", if req.enable_exfil { "ON" } else { "OFF" }),
