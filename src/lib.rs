@@ -205,7 +205,7 @@ async fn handle_ghost_heartbeat(
 
 async fn handle_ghost_upload(
     Path((id, loot_type)): Path<(String, String)>,
-    State(_state): State<Arc<ServerState>>,
+    State(state): State<Arc<ServerState>>,
     body: Bytes
 ) -> Json<String> {
     let hostname = state.ghosts.get(&id).map(|g| g.hostname.clone()).unwrap_or_else(|| "unknown".to_string());
