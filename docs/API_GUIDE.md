@@ -4,12 +4,12 @@
 
 ### GHOST
 
-| Method | Endpoint                     | Purpose                                             | Request                                           | Response                                          |
-|--------|------------------------------|-----------------------------------------------------|---------------------------------------------------|---------------------------------------------------|
-| `POST` | `/api/v1/ghost/register`     | Register a new GHOST                                | [`Ghost`](#struct-ghost)                          | `String`                                          |
-| `POST` | `/api/v1/ghost/heartbeat`    | Main loop that sends status and receives configs    | [`HeartbeatRequest`](#struct-heartbeat-request)   | [`HeartbeatResponse`](#struct-heartbeat-response) |
-| `GET`  | `/api/v1/ghost/download/:id` | Payload download                                    | `None`                                            | `Binary file`                                     |
-| `POST` | `/api/v1/ghost/upload`       | Exfiltrated data target                             | `Raw bytes`                                       | `String`                                          |
+| Method | Endpoint                         | Purpose                                             | Request                                           | Response                                          |
+|--------|----------------------------------|-----------------------------------------------------|---------------------------------------------------|---------------------------------------------------|
+| `POST` | `/api/v1/ghost/register`         | Register a new GHOST                                | [`Ghost`](#struct-ghost)                          | `String`                                          |
+| `POST` | `/api/v1/ghost/heartbeat`        | Main loop that sends status and receives configs    | [`HeartbeatRequest`](#struct-heartbeat-request)   | [`HeartbeatResponse`](#struct-heartbeat-response) |
+| `GET`  | `/api/v1/ghost/download/:id`     | Payload download                                    | `None`                                            | `Binary file`                                     |
+| `POST` | `/api/v1/ghost/upload/:id/:type` | Exfiltrated data target                             | `Raw bytes`                                       | `String`                                          |
 
 ### CHARON
 
