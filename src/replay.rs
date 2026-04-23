@@ -3,7 +3,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 
 // okay a huge disclaimer for anyone reading this code
 // this is being put together by duct tape and hope alone
@@ -63,7 +63,7 @@ pub fn available_scenarios() -> Vec<String> {
     vec![
         "idle_fleet".to_string(),
         "task_flow".to_string(),
-        "loot_burst".to_string()
+        "loot_burst".to_string(),
     ]
 }
 
@@ -73,8 +73,11 @@ pub async fn build_replay_status(state: Arc<ServerState>) -> ReplayStatus {
 }
 
 pub async fn start_replay(state: Arc<ServerState>, scenario: &str) -> Result<ReplayStatus, String> {
-    if !available_scenarios().iter().any(|candidate| candidate == scenario) {
-        return Err(format!("unknown replay scnario '{}'", scenario));
+    if !available_scenarios()
+        .iter()
+        .any(|candidate| candidate == scenario)
+    {
+        return Err(format!("unknown replay scenario '{}'", scenario));
     }
 
     let mut replay = state.replay.write().await;
@@ -142,7 +145,7 @@ fn status_from_state(replay: &ReplayState) -> ReplayStatus {
 }
 
 // each ghost will use a regular ticker like a good boy
-// need to re-verify after the PoC tho 
+// need to re-verify after the PoC tho
 fn refresh_replay_ghosts(state: &Arc<ServerState>, ghost_ids: &HashSet<String>, now: i64) {
     for ghost_id in ghost_ids {
         if let Some(mut ghost) = state.ghosts.get_mut(ghost_id) {
@@ -167,36 +170,67 @@ fn schedule_pending_results(state: &Arc<ServerState>, replay: &mut ReplayState, 
         drop(ghost);
 
         if let Some(mut tasks) = state.pending_tasks.get_mut(&ghost_id) {
-            for task in tasks.iter_mut().filter(|task| task.status == TaskStatus::Pending) {
-                if replay.scheduled_results.iter().any(|entry| entry.task_id == task.id) {
+            for task in tasks
+                .iter_mut()
+                .filter(|task| task.status == TaskStatus::Pending)
+            {
+                if replay
+                    .scheduled_results
+                    .iter()
+                    .any(|entry| entry.task_id == task.id)
+                {
                     continue;
                 }
 
                 task.status = TaskStatus::Sent;
-                replay.scheduled_results.push(build_scheduled_result(&ghost_id, &hostname, task, now));
+                replay
+                    .scheduled_results
+                    .push(build_scheduled_result(&ghost_id, &hostname, task, now));
             }
         }
     }
 }
 
-fn build_scheduled_result(ghost_id: &str, hostname: &str, task: &Task, now: i64) -> ScheduledReplayResult {
+fn build_scheduled_result(
+    ghost_id: &str,
+    hostname: &str,
+    task: &Task,
+    now: i64,
+) -> ScheduledReplayResult {
     let (output, loot_filename, loot_contents, remove_ghost) = match task.command.as_str() {
         "EXEC" => (build_exec_output(hostname, &task.args), None, None, false),
-        "IMPACT" => ("replay mode: impact simulated; no destructive action executed >w<".to_string(), None, None, false),
+        "IMPACT" => (
+            "replay mode: impact simulated; no destructive action executed >w<".to_string(),
+            None,
+            None,
+            false,
+        ),
         "EXFIL" => {
             let filename = format!("{}{}_{}.txt", REPLAY_LOOT_PREFIX, hostname, now);
-            let contents = format!("replay loot from {}\nsource=manual_exfil\ncaptured_at={}\n", hostname, now);
+            let contents = format!(
+                "replay loot from {}\nsource=manual_exfil\ncaptured_at={}\n",
+                hostname, now
+            );
 
-            (format!("replay mode: synthetic loot generated :3 -> {}", filename),
-        Some(filename), Some(contents), false)
+            (
+                format!("replay mode: synthetic loot generated :3 -> {}", filename),
+                Some(filename),
+                Some(contents),
+                false,
+            )
         }
         "STOP_HAUNT" => (
             "replay mode: ghost shutdown simulated @w@".to_string(),
-            None, None, true
+            None,
+            None,
+            true,
         ),
         other => (
-            format!("replay mode: unsupported command '{}' acknowledged", other), None, None, false
-        )
+            format!("replay mode: unsupported command '{}' acknowledged", other),
+            None,
+            None,
+            false,
+        ),
     };
 
     ScheduledReplayResult {
@@ -210,7 +244,7 @@ fn build_scheduled_result(ghost_id: &str, hostname: &str, task: &Task, now: i64)
         loot_filename,
         loot_contents,
         remove_ghost,
-        from_pending: true
+        from_pending: true,
     }
 }
 
@@ -226,7 +260,10 @@ fn build_exec_output(hostname: &str, args: &str) -> String {
         "whoami" => "replay-operator".to_string(),
         "hostname" => hostname.to_string(),
         "pwd" => "/home/replay/demo".to_string(),
-        "uname -a" => format!("Linux {} 6.8.0-replay #1 SMP PREEMPT_DYNAMIC x86_64 GNU/Linux", hostname),
+        "uname -a" => format!(
+            "Linux {} 6.8.0-replay #1 SMP PREEMPT_DYNAMIC x86_64 GNU/Linux",
+            hostname
+        ),
         cmd if cmd == "ls" || cmd == "ls -la" => {
             "Documents\nDownloads\nnotes.txt\ntelemetry.log".to_string()
         }
@@ -256,7 +293,11 @@ async fn complete_scheduled_result(state: Arc<ServerState>, scheduled: Scheduled
         result: Some(scheduled.output.clone()),
     });
 
-    state.task_history.entry(scheduled.ghost_id.clone()).or_insert_with(Vec::new).push(task);
+    state
+        .task_history
+        .entry(scheduled.ghost_id.clone())
+        .or_insert_with(Vec::new)
+        .push(task);
 
     if let (Some(filename), Some(contents)) = (
         scheduled.loot_filename.as_deref(),
@@ -278,11 +319,16 @@ async fn remove_single_replay_ghost(state: Arc<ServerState>, ghost_id: &str) {
 
     let mut replay = state.replay.write().await;
     replay.replay_ghost_ids.remove(ghost_id);
-    replay.scheduled_results.retain(|entry| entry.ghost_id != ghost_id);
+    replay
+        .scheduled_results
+        .retain(|entry| entry.ghost_id != ghost_id);
 }
 
-async fn reset_replay_locked(state: &Arc<ServerState>, replay: &mut ReplayState) -> Result<(), String> {
-    let replay_ids: Vec<String> =replay.replay_ghost_ids.iter().cloned().collect();
+async fn reset_replay_locked(
+    state: &Arc<ServerState>,
+    replay: &mut ReplayState,
+) -> Result<(), String> {
+    let replay_ids: Vec<String> = replay.replay_ghost_ids.iter().cloned().collect();
 
     for ghost_id in replay_ids {
         state.ghosts.remove(&ghost_id);
@@ -302,7 +348,9 @@ fn seed_scenario(state: &Arc<ServerState>, replay: &mut ReplayState, scenario: &
     match scenario {
         "idle_fleet" => {
             seed_ghosts(
-                state, replay, &[
+                state,
+                replay,
+                &[
                     ReplayGhostSeed {
                         id: "replay-idle-01",
                         hostname: "ops-gateway-01",
@@ -323,13 +371,15 @@ fn seed_scenario(state: &Arc<ServerState>, replay: &mut ReplayState, scenario: &
                         os: "linux",
                         sleep_interval: 30,
                         jitter_percent: 5,
-                    }
-                ]
+                    },
+                ],
             );
         }
         "task_flow" => {
             seed_ghosts(
-                state, replay, &[
+                state,
+                replay,
+                &[
                     ReplayGhostSeed {
                         id: "replay-task-01",
                         hostname: "jumpbox-01",
@@ -343,35 +393,44 @@ fn seed_scenario(state: &Arc<ServerState>, replay: &mut ReplayState, scenario: &
                         os: "linux",
                         sleep_interval: 10,
                         jitter_percent: 3,
-                    }
-                ]
+                    },
+                ],
             );
 
             push_history_task(
-                state, "replay-task-01", Task {
+                state,
+                "replay-task-01",
+                Task {
                     id: "replay-task-history-01".to_string(),
                     command: "EXEC".to_string(),
                     args: "whoami".to_string(),
                     status: TaskStatus::Done,
-                    result: Some("replay-operator".to_string())
-                }
+                    result: Some("replay-operator".to_string()),
+                },
             );
 
             push_history_task(
-                state, "replay-task-02", Task {
+                state,
+                "replay-task-02",
+                Task {
                     id: "replay-task-history-02".to_string(),
                     command: "EXEC".to_string(),
                     args: "uname -a".to_string(),
                     status: TaskStatus::Done,
-                    result: Some("Linux ops-laptop-01 6.8.0-replay #1 SMP PREEMPT_DYNAMIC x86_64 GNU/Linux".to_string())
-                }
+                    result: Some(
+                        "Linux ops-laptop-01 6.8.0-replay #1 SMP PREEMPT_DYNAMIC x86_64 GNU/Linux"
+                            .to_string(),
+                    ),
+                },
             );
         }
         "loot_burst" => {
             let now = Utc::now().timestamp();
 
             seed_ghosts(
-                state, replay, &[
+                state,
+                replay,
+                &[
                     ReplayGhostSeed {
                         id: "replay-loot-01",
                         hostname: "fileserver-01",
@@ -392,10 +451,10 @@ fn seed_scenario(state: &Arc<ServerState>, replay: &mut ReplayState, scenario: &
                         os: "linux",
                         sleep_interval: 5,
                         jitter_percent: 1,
-                    }
-                ]
+                    },
+                ],
             );
-            
+
             replay.scheduled_results.extend([
                 ScheduledReplayResult {
                     ghost_id: "replay-loot-01".to_string(),
@@ -406,7 +465,9 @@ fn seed_scenario(state: &Arc<ServerState>, replay: &mut ReplayState, scenario: &
                     status: TaskStatus::Done,
                     output: "replay mode: scheduled loot burst #1 complete :3".to_string(),
                     loot_filename: Some("replay_loot_burst_01.txt".to_string()),
-                    loot_contents: Some("scheduled replay loot\nhost=fileserver-01\nwave=1\n".to_string()),
+                    loot_contents: Some(
+                        "scheduled replay loot\nhost=fileserver-01\nwave=1\n".to_string(),
+                    ),
                     remove_ghost: false,
                     from_pending: false,
                 },
@@ -415,11 +476,13 @@ fn seed_scenario(state: &Arc<ServerState>, replay: &mut ReplayState, scenario: &
                     task_id: "replay-loot-auto-02".to_string(),
                     command: "EXFIL".to_string(),
                     args: "scheduled_wave_2".to_string(),
-                    ready_at: now + 2,
+                    ready_at: now + 4,
                     status: TaskStatus::Done,
                     output: "replay mode: scheduled loot burst #2 complete :3".to_string(),
                     loot_filename: Some("replay_loot_burst_02.txt".to_string()),
-                    loot_contents: Some("scheduled replay loot\nhost=finance-app-01\nwave=2\n".to_string()),
+                    loot_contents: Some(
+                        "scheduled replay loot\nhost=finance-app-01\nwave=2\n".to_string(),
+                    ),
                     remove_ghost: false,
                     from_pending: false,
                 },
@@ -428,11 +491,13 @@ fn seed_scenario(state: &Arc<ServerState>, replay: &mut ReplayState, scenario: &
                     task_id: "replay-loot-auto-03".to_string(),
                     command: "EXFIL".to_string(),
                     args: "scheduled_wave_3".to_string(),
-                    ready_at: now + 2,
+                    ready_at: now + 6,
                     status: TaskStatus::Done,
                     output: "replay mode: scheduled loot burst #3 complete :3".to_string(),
                     loot_filename: Some("replay_loot_burst_03.txt".to_string()),
-                    loot_contents: Some("scheduled replay loot\nhost=backup-node-01\nwave=3\n".to_string()),
+                    loot_contents: Some(
+                        "scheduled replay loot\nhost=backup-node-01\nwave=3\n".to_string(),
+                    ),
                     remove_ghost: false,
                     from_pending: false,
                 },
@@ -466,15 +531,23 @@ fn seed_ghosts(state: &Arc<ServerState>, replay: &mut ReplayState, seeds: &[Repl
 }
 
 fn push_history_task(state: &Arc<ServerState>, ghost_id: &str, task: Task) {
-    state.task_history.entry(ghost_id.to_string()).or_insert_with(Vec::new).push(task);
+    state
+        .task_history
+        .entry(ghost_id.to_string())
+        .or_insert_with(Vec::new)
+        .push(task);
 }
 
 async fn write_replay_loot(filename: &str, contents: &str) -> Result<(), String> {
-    tokio::fs::create_dir_all("loot").await.map_err(|error| format!("failed to create replay loot dir :c [{}]", error))?;
+    tokio::fs::create_dir_all("loot")
+        .await
+        .map_err(|error| format!("failed to create replay loot dir :c [{}]", error))?;
 
     let path = format!("loot/{}", filename);
 
-    tokio::fs::write(path, contents).await.map_err(|error| format!("failed to write replay loot [{}]", error))
+    tokio::fs::write(path, contents)
+        .await
+        .map_err(|error| format!("failed to write replay loot [{}]", error))
 }
 
 async fn remove_replay_loot_files() -> Result<(), String> {
@@ -488,7 +561,11 @@ async fn remove_replay_loot_files() -> Result<(), String> {
         };
 
         if name.starts_with(REPLAY_LOOT_PREFIX) {
-            tokio::fs::remove_file(entry.path()).await.map_err(|error| format!("failed to remove replay loot :c ['{}': {}]", name, error))?;
+            tokio::fs::remove_file(entry.path())
+                .await
+                .map_err(|error| {
+                    format!("failed to remove replay loot :c ['{}': {}]", name, error)
+                })?;
         }
     }
 
