@@ -1,3 +1,5 @@
+pub mod replay;
+
 use axum::{
     extract::{State, Path},
     routing::{get, post},
@@ -14,6 +16,8 @@ use uuid::Uuid;
 use tower_http::services::ServeDir;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+
+use crate::replay::{build_replay_status, reset_replay, start_replay, stop_replay, ReplayStartRequest, ReplayStatus};
 
 // === ENUMS ===
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -35,7 +39,9 @@ pub struct Ghost {
     pub sleep_interval: Option<i64>,
     pub jitter_percent: Option<i16>,
     pub update_pending: Option<bool>,
-    pub last_seen: Option<i64>  // unix timestamp
+    pub last_seen: Option<i64>,  // unix timestamp
+    #[serde(default)]
+    pub is_replay: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,7 +131,8 @@ fn default_impact_level() -> String { "TEST".to_string() }
 pub struct ServerState {
     pub ghosts: DashMap<String, Ghost>,
     pub pending_tasks: DashMap<String, Vec<Task>>,
-    pub task_history: DashMap<String, Vec<Task>>
+    pub task_history: DashMap<String, Vec<Task>>,
+    pub replay: tokio::sync::RwLock<replay::ReplayState>,
 }
 
 // === API handlers ===
@@ -444,6 +451,22 @@ async fn handle_charon_build(
     Ok(Json(download_path))
 }
 
+async fn handle_charon_get_replay_status(State(state): State<Arc<ServerState>>) -> Json<ReplayStatus> {
+    Json(build_replay_status(state).await)
+}
+
+async fn handle_charon_start_replay(State(state): State<Arc<ServerState>>, Json(req): Json<ReplayStartRequest>,) -> Result<Json<ReplayStatus>, (StatusCode, String)> {
+    start_replay(state, &req.scenario).await.map(Json).map_err(|error| (StatusCode::BAD_REQUEST, error))
+}
+
+async fn handle_charon_stop_replay(State(state): State<Arc<ServerState>>) -> Result<Json<ReplayStatus>, (StatusCode, String)> {
+    stop_replay(state).await.map(Json).map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))
+}
+
+async fn handle_charon_reset_replay(State(state): State<Arc<ServerState>>) -> Result<Json<ReplayStatus>, (StatusCode, String)> {
+    reset_replay(state).await.map(Json).map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))
+}
+
 pub fn app(state: Arc<ServerState>) -> Router {
     let build_base = std::env::var("SHADOW_BUILD_DIR").unwrap_or("builds".to_string());
     let serve_dir = ServeDir::new(build_base);
@@ -464,6 +487,10 @@ pub fn app(state: Arc<ServerState>) -> Router {
         .route("/ghosts/{id}/kill", post(handle_charon_kill_ghost))    // killswitch for GHOST
         .route("/build", post(handle_charon_build))
         .route("/loot", get(handle_charon_list_loot))
+        .route("/replay", get(handle_charon_get_replay_status))
+        .route("/replay/start", post(handle_charon_start_replay))
+        .route("/replay/stop", post(handle_charon_stop_replay))
+        .route("/replay/reset", post(handle_charon_reset_replay))
         .nest_service("/loot/download", serve_loot);
 
     Router::<Arc<ServerState>>::new()

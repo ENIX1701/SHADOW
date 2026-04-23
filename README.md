@@ -51,6 +51,7 @@ For details regarding the API please see the [API reference](docs/API_GUIDE.md).
 
 - [ ] Log unification
 - [ ] Persistent storage
+- [ ] Replay mode
 
 ## Legal
 

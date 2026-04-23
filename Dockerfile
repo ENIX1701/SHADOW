@@ -11,6 +11,7 @@ COPY . .
 
 # === TEST STAGE ===
 FROM base AS test
+
 RUN cargo test --release
 
 # === BUILD STAGE ===
